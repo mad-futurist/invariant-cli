@@ -1,0 +1,69 @@
+[project]
+name = "invariant-cli"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Yaroslava Khrabrova", email = "yaroslava@smartbuildingenergies.onmicrosoft.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.26.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pyyaml>=6.0.3",
+    "typer>=0.27.1",
+]
+
+[project.scripts]
+invariant-cli = "invariant_cli:main"
+invariant = "invariant_cli.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "pre-commit>=4.6.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.1",
+    "types-pyyaml>=6.0.12.20260724",
+]
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "I",   # import sorting
+    "UP",  # Python syntax upgrades
+    "B",   # common bug patterns
+    "SIM", # simplifications
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+]
+
+[tool.coverage.run]
+source = ["invariant_cli"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+warn_unused_configs = true
