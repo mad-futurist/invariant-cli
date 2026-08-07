@@ -62,6 +62,15 @@ def test_find_workspace_root_from_nested_directory(tmp_path: Path) -> None:
     assert root == tmp_path
 
 
+def test_find_workspace_root_from_parent_directory_with_nested_workspace(tmp_path: Path) -> None:
+    nested_workspace = tmp_path / "projects" / "demo"
+    initialize_workspace(nested_workspace, name="test-project")
+
+    root = find_workspace_root(tmp_path)
+
+    assert root == nested_workspace
+
+
 def test_find_workspace_root_fails_without_workspace(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         find_workspace_root(tmp_path)
