@@ -1,0 +1,63 @@
+from pathlib import Path
+
+import yaml
+
+from invariant_cli.workspace.model import WorkspacePaths
+
+
+class WorkspaceAlreadyExistsError(Exception):
+    pass
+
+
+def get_workspace_paths(root: Path) -> WorkspacePaths:
+    invariant_dir = root / ".invariant"
+    config = invariant_dir / "invariant.yaml"
+    cases = invariant_dir / "cases"
+    observations = invariant_dir / "observations"
+    contracts = invariant_dir / "contracts"
+    gates = invariant_dir / "gates"
+    results = invariant_dir / "results"
+
+    return WorkspacePaths(
+        root=root,
+        invariant_dir=invariant_dir,
+        config=config,
+        cases=cases,
+        observations=observations,
+        contracts=contracts,
+        gates=gates,
+        results=results,
+    )
+
+
+def initialize_workspace(
+    root: Path,
+    *,
+    name: str,
+    force: bool = False,
+) -> WorkspacePaths:
+    paths = get_workspace_paths(root)
+
+    if paths.invariant_dir.exists():
+        raise WorkspaceAlreadyExistsError(f"Workspace already exists at {paths.invariant_dir}")
+
+    # Create the .invariant directory and subdirectories
+    paths.invariant_dir.mkdir(parents=True, exist_ok=False)
+    paths.cases.mkdir(exist_ok=False)
+    paths.observations.mkdir(exist_ok=False)
+    paths.contracts.mkdir(exist_ok=False)
+    paths.gates.mkdir(exist_ok=False)
+    paths.results.mkdir(exist_ok=False)
+
+    # Create a default config.yaml file
+    default_config = {
+        "name": name,
+        "version": "0.1.0",
+        "description": "A new invariant workspace.",
+        "created_at": str(root),
+        "project": {"name": name},
+    }
+    with open(paths.config, "w") as config_file:
+        yaml.safe_dump(default_config, config_file, sort_keys=False)
+
+    return paths

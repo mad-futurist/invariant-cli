@@ -1,5 +1,7 @@
 import typer
 
+from invariant_cli.commands.init import init_command
+
 app = typer.Typer(
     name="invariant",
     help="Deterministic verification infrasstructure for software evolutions.",
@@ -16,6 +18,9 @@ def main_callback() -> None:
 def version() -> None:
     """Print the version of invariant."""
     typer.echo("Invariant CLI 0.1.0")
+
+
+app.command(name="init")(init_command)
 
 
 def main() -> None:
