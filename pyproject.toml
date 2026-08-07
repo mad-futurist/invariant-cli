@@ -15,8 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-invariant-cli = "invariant_cli:main"
-invariant = "invariant_cli.cli:app"
+invariant = "invariant_cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.0,<0.13.0"]

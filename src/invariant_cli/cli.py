@@ -7,7 +7,16 @@ app = typer.Typer(
 )
 
 
-@app.command()
-def version():
+@app.callback()
+def main_callback() -> None:
+    """Manage invariant CLI commands."""
+
+
+@app.command(name="version")
+def version() -> None:
     """Print the version of invariant."""
     typer.echo("Invariant CLI 0.1.0")
+
+
+def main() -> None:
+    app()
