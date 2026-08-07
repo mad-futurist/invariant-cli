@@ -61,3 +61,18 @@ def initialize_workspace(
         yaml.safe_dump(default_config, config_file, sort_keys=False)
 
     return paths
+
+
+def find_workspace_root(start: Path) -> Path:
+    current = start.resolve()
+
+    for directory in (current, *current.parents):
+        if (directory / ".invariant").is_dir():
+            return directory
+
+    raise FileNotFoundError(f"No Invariant workspace found from {start}")
+
+
+def load_workspace_paths(start: Path) -> WorkspacePaths:
+    root = find_workspace_root(start)
+    return get_workspace_paths(root)

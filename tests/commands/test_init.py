@@ -2,9 +2,11 @@ import os
 import tempfile
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from invariant_cli.cli import app
+from invariant_cli.workspace.service import find_workspace_root, initialize_workspace
 
 runner = CliRunner()
 
@@ -47,3 +49,19 @@ def test_init_fails_if_workspace_exists() -> None:
             assert "already exists" in second.stderr
         finally:
             os.chdir(original_cwd)
+
+
+def test_find_workspace_root_from_nested_directory(tmp_path: Path) -> None:
+    initialize_workspace(tmp_path, name="test-project")
+
+    nested = tmp_path / "src" / "backend" / "services"
+    nested.mkdir(parents=True)
+
+    root = find_workspace_root(nested)
+
+    assert root == tmp_path
+
+
+def test_find_workspace_root_fails_without_workspace(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        find_workspace_root(tmp_path)
