@@ -17,12 +17,14 @@ def get_workspace_paths(root: Path) -> WorkspacePaths:
     contracts = invariant_dir / "contracts"
     gates = invariant_dir / "gates"
     results = invariant_dir / "results"
+    executions = invariant_dir / "executions"
 
     return WorkspacePaths(
         root=root,
         invariant_dir=invariant_dir,
         config=config,
         cases=cases,
+        executions=executions,
         observations=observations,
         contracts=contracts,
         gates=gates,
@@ -44,6 +46,7 @@ def initialize_workspace(
     # Create the .invariant directory and subdirectories
     paths.invariant_dir.mkdir(parents=True, exist_ok=False)
     paths.cases.mkdir(exist_ok=False)
+    paths.executions.mkdir(exist_ok=False)
     paths.observations.mkdir(exist_ok=False)
     paths.contracts.mkdir(exist_ok=False)
     paths.gates.mkdir(exist_ok=False)

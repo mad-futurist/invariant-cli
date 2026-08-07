@@ -1,5 +1,6 @@
 import typer
 
+from invariant_cli.commands.capture import capture_command
 from invariant_cli.commands.init import init_command
 
 app = typer.Typer(
@@ -21,6 +22,7 @@ def version() -> None:
 
 
 app.command(name="init")(init_command)
+app.command("capture")(capture_command)
 
 
 def main() -> None:
