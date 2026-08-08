@@ -23,6 +23,11 @@ def save_execution(
         "exit_code": execution.exit_code,
         "stdout": execution.stdout,
         "stderr": execution.stderr,
+        "filesystem_diff": {
+            "created": [str(path) for path in execution.filesystem_diff.created],
+            "deleted": [str(path) for path in execution.filesystem_diff.deleted],
+            "modified": [str(path) for path in execution.filesystem_diff.modified],
+        },
     }
 
     output_path.write_text(

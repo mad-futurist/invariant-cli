@@ -118,6 +118,16 @@ Example:
 uv run invariant capture -- python app.py
 ```
 
+Run capture from any directory by explicitly providing the workspace root
+(the folder that directly contains `.invariant`):
+
+```bash
+uv run invariant capture --workspace-root /path/to/project -- python app.py
+```
+
+When `--workspace-root` is provided, Invariant executes the command from that
+root and computes filesystem snapshots there.
+
 For a simple test:
 
 ```bash

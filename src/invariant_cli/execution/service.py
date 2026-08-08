@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from invariant_cli.execution.model import Execution
+from invariant_cli.observation.filesystem import FileSystemDiff
 
 
 def capture_process(
@@ -38,4 +39,9 @@ def capture_process(
         exit_code=completed.returncode,
         stdout=completed.stdout,
         stderr=completed.stderr,
+        filesystem_diff=FileSystemDiff(
+            created=[],
+            deleted=[],
+            modified=[],
+        ),
     )

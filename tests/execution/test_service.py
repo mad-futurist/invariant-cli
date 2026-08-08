@@ -18,3 +18,6 @@ def test_capture_process(tmp_path: Path) -> None:
     assert execution.stdout.strip() == "hello invariant"
     assert execution.stderr == ""
     assert execution.duration_seconds >= 0
+    assert execution.filesystem_diff.created == []
+    assert execution.filesystem_diff.deleted == []
+    assert execution.filesystem_diff.modified == []

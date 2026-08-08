@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from invariant_cli.observation.filesystem import FileSystemDiff
+
 
 @dataclass(frozen=True)
 class Execution:
@@ -16,3 +18,4 @@ class Execution:
     exit_code: int
     stdout: str
     stderr: str
+    filesystem_diff: FileSystemDiff

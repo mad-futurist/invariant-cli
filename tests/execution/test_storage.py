@@ -30,3 +30,8 @@ def test_save_execution(tmp_path: Path) -> None:
     assert data["id"] == execution.id
     assert data["exit_code"] == 0
     assert data["stdout"].strip() == "captured"
+    assert data["filesystem_diff"] == {
+        "created": [],
+        "deleted": [],
+        "modified": [],
+    }
