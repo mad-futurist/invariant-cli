@@ -2,6 +2,7 @@ from pathlib import Path
 
 import typer
 
+from invariant_cli.contracts.enrichment import enrich_with_static_usage
 from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import (
     CandidateTranslationContract,
@@ -15,6 +16,8 @@ from invariant_cli.contracts.storage import (
 from invariant_cli.contracts.validation import validate_candidate_contract
 from invariant_cli.execution.reader import load_execution_observations
 from invariant_cli.matching.model import EvidenceKind
+from invariant_cli.matching.static.model import FieldUsage
+from invariant_cli.matching.static.python_ast import extract_field_usage
 from invariant_cli.workspace.model import WorkspacePaths
 from invariant_cli.workspace.service import (
     get_workspace_paths,
@@ -46,10 +49,26 @@ WorkspaceRootOption = typer.Option(
 )
 
 
+SourceCodeOption = typer.Option(
+    None,
+    "--source-code",
+    help="Python source file used to add static usage evidence.",
+)
+
+
+TargetCodeOption = typer.Option(
+    None,
+    "--target-code",
+    help="Python target file used to add static usage evidence.",
+)
+
+
 @contract_app.command("infer")
 def infer_contract(
     pair: list[str] = PairOption,
     workspace_root: Path | None = WorkspaceRootOption,
+    source_code: Path | None = SourceCodeOption,
+    target_code: Path | None = TargetCodeOption,
 ) -> None:
     workspace = _resolve_workspace(
         workspace_root,
@@ -57,6 +76,9 @@ def infer_contract(
 
     if len(pair) < 3:
         raise typer.BadParameter("Contract inference requires at least 3 paired executions.")
+
+    if (source_code is None) != (target_code is None):
+        raise typer.BadParameter("Pass --source-code and --target-code together.")
 
     pair_refs: list[ExecutionPairRef] = []
 
@@ -95,6 +117,13 @@ def infer_contract(
 
     candidates = infer_correspondences(observation_pairs)
 
+    if source_code is not None and target_code is not None:
+        candidates = enrich_with_static_usage(
+            candidates,
+            _extract_python_usage(source_code, label="source"),
+            _extract_python_usage(target_code, label="target"),
+        )
+
     contract = CandidateTranslationContract(
         version=2,
         paired_executions=pair_refs,
@@ -128,6 +157,16 @@ def infer_contract(
                     f"{dyn.attributes['total_pairs']}"
                 )
                 typer.echo(f"  distinct transitions: {dyn.attributes['distinct_transitions']}")
+
+            static = next(
+                (e for e in candidate.evidence if e.kind == EvidenceKind.STATIC_USAGE),
+                None,
+            )
+            if static:
+                common_operations = static.attributes.get("common_operations", [])
+                if isinstance(common_operations, list):
+                    operations = ", ".join(str(operation) for operation in common_operations)
+                    typer.echo(f"  static evidence: {operations}")
             typer.echo("")
     else:
         typer.echo("No correspondence candidates found.")
@@ -147,6 +186,18 @@ def _parse_pair(
         source_id.strip(),
         target_id.strip(),
     )
+
+
+def _extract_python_usage(path: Path, *, label: str) -> dict[str, FieldUsage]:
+    resolved = path.expanduser().resolve()
+
+    if not resolved.is_file():
+        raise typer.BadParameter(f"{label.capitalize()} code file not found: {path}")
+
+    try:
+        return extract_field_usage(resolved)
+    except (OSError, SyntaxError) as exc:
+        raise typer.BadParameter(f"Could not analyze {label} code: {exc}") from exc
 
 
 def _resolve_workspace(

@@ -209,12 +209,17 @@ tempCodeRunnerFile.py
 # Invariant local workspace artifacts
 .invariant/
 
+# Local Codex collaboration journal
+agent.md
+
 # Invariant demos contain target implementations.
 # The generic Python gitignore rule "target/" would hide them otherwise.
 !experiments/translation_contract_demo/target/
 !experiments/translation_contract_demo/target/**
 !experiments/translation_transform_demo/target/
 !experiments/translation_transform_demo/target/**
+!experiments/static_usage_demo/target/
+!experiments/static_usage_demo/target/**
 
 # PyPI configuration file
 .pypirc

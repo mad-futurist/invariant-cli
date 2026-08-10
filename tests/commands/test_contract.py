@@ -67,6 +67,18 @@ def test_contract_infer_command(tmp_path: Path) -> None:
 
         executions = tmp_path / ".invariant" / "executions"
 
+        source_code = tmp_path / "source.py"
+        source_code.write_text(
+            'state["balance"] -= payment\n',
+            encoding="utf-8",
+        )
+
+        target_code = tmp_path / "target.py"
+        target_code.write_text(
+            'account["remaining"] -= payment\n',
+            encoding="utf-8",
+        )
+
         runs = [
             ("source-1", "target-1", 100, 70),
             ("source-2", "target-2", 100, 40),
@@ -103,6 +115,10 @@ def test_contract_infer_command(tmp_path: Path) -> None:
                 "source-2:target-2",
                 "--pair",
                 "source-3:target-3",
+                "--source-code",
+                str(source_code),
+                "--target-code",
+                str(target_code),
             ],
         )
 
@@ -148,11 +164,21 @@ def test_contract_infer_command(tmp_path: Path) -> None:
         }
 
         evidence = correspondence["evidence"]
-        assert len(evidence) == 1
+        assert len(evidence) == 2
         assert evidence[0]["kind"] == "dynamic_transition"
         assert evidence[0]["attributes"]["matched_pairs"] == 3
         assert evidence[0]["attributes"]["total_pairs"] == 3
         assert evidence[0]["attributes"]["distinct_transitions"] == 3
+
+        assert evidence[1] == {
+            "kind": "static_usage",
+            "producer": "python-ast-v1",
+            "attributes": {
+                "source_operations": ["read", "subtract", "write"],
+                "target_operations": ["read", "subtract", "write"],
+                "common_operations": ["read", "subtract", "write"],
+            },
+        }
 
     finally:
         os.chdir(original_cwd)
