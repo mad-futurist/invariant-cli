@@ -1,15 +1,19 @@
 from invariant_cli.contracts.model import (
     CandidateTranslationContract,
     CorrespondenceCandidate,
-    DynamicEvidence,
     ExecutionPairRef,
-    ObservationSelector,
     Relation,
     RelationKind,
 )
 from invariant_cli.contracts.validation import (
     ValidationVerdict,
     validate_candidate_contract,
+)
+from invariant_cli.matching.model import (
+    EntityKind,
+    EntityRef,
+    Evidence,
+    EvidenceKind,
 )
 from invariant_cli.observation.model import (
     Observation,
@@ -55,20 +59,28 @@ def contract() -> CandidateTranslationContract:
         ],
         correspondences=[
             CorrespondenceCandidate(
-                source=ObservationSelector(
-                    resource=("experiments/translation_contract_demo/source/state.json"),
-                    path="balance",
+                source=EntityRef(
+                    kind=EntityKind.JSON_FIELD,
+                    namespace="experiments/translation_contract_demo/source/state.json",
+                    identifier="balance",
                 ),
-                target=ObservationSelector(
-                    resource=("experiments/translation_contract_demo/target/account.json"),
-                    path="remaining",
+                target=EntityRef(
+                    kind=EntityKind.JSON_FIELD,
+                    namespace="experiments/translation_contract_demo/target/account.json",
+                    identifier="remaining",
                 ),
                 relation=Relation(kind=RelationKind.EXACT),
-                evidence=DynamicEvidence(
-                    matched_pairs=3,
-                    total_pairs=3,
-                    distinct_transitions=3,
-                ),
+                evidence=[
+                    Evidence(
+                        kind=EvidenceKind.DYNAMIC_TRANSITION,
+                        producer="dynamic-transition-v1",
+                        attributes={
+                            "matched_pairs": 3,
+                            "total_pairs": 3,
+                            "distinct_transitions": 3,
+                        },
+                    )
+                ],
             )
         ],
     )

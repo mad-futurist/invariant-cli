@@ -118,7 +118,7 @@ def test_contract_infer_command(tmp_path: Path) -> None:
 
         data = yaml.safe_load(files[0].read_text(encoding="utf-8"))
 
-        assert data["version"] == 1
+        assert data["version"] == 2
         assert data["status"] == "candidate"
 
         assert len(data["paired_executions"]) == 3
@@ -130,13 +130,15 @@ def test_contract_infer_command(tmp_path: Path) -> None:
         correspondence = correspondences[0]
 
         assert correspondence["source"] == {
-            "resource": "state.json",
-            "path": "balance",
+            "kind": "json_field",
+            "namespace": "state.json",
+            "identifier": "balance",
         }
 
         assert correspondence["target"] == {
-            "resource": "account.json",
-            "path": "remaining",
+            "kind": "json_field",
+            "namespace": "account.json",
+            "identifier": "remaining",
         }
 
         assert correspondence["relation"] == {
@@ -145,12 +147,12 @@ def test_contract_infer_command(tmp_path: Path) -> None:
             "offset": "0",
         }
 
-        dynamic = correspondence["evidence"]["dynamic"]
-
-        assert dynamic["matched_pairs"] == 3
-        assert dynamic["total_pairs"] == 3
-        assert dynamic["distinct_transitions"] == 3
-        assert dynamic["score"] == 1.0
+        evidence = correspondence["evidence"]
+        assert len(evidence) == 1
+        assert evidence[0]["kind"] == "dynamic_transition"
+        assert evidence[0]["attributes"]["matched_pairs"] == 3
+        assert evidence[0]["attributes"]["total_pairs"] == 3
+        assert evidence[0]["attributes"]["distinct_transitions"] == 3
 
     finally:
         os.chdir(original_cwd)

@@ -1,8 +1,240 @@
 # Invariant CLI
 
-Invariant is an experimental CLI for capturing and verifying software executions during migrations, rewrites, and other code transformations.
+Invariant is an experimental CLI for checking what happens to software behavior when a system is rewritten, migrated, or reorganized.
 
-The project is currently in early development.
+The basic idea is simple: run the old and new implementations, capture what they actually do, and look for stable relations between the two.
+
+Invariant is still early. It is not a production verification system yet. The repository is currently used to build and test the core pieces of that workflow.
+
+## What works today
+
+Invariant can:
+
+- run a command and capture its execution;
+- record process information and filesystem changes;
+- observe changes inside JSON files;
+- compare observations from two executions;
+- infer candidate correspondences from several paired source/target executions;
+- detect exact value relations and simple affine transformations;
+- validate an inferred candidate contract on executions that were not used to infer it.
+
+For example, the source implementation may store a balance as cents:
+
+```
+balance_cents: 10000 → 7000
+```
+
+while the target implementation stores the same state as euros:
+
+```
+remaining: 100 → 70
+```
+
+Given several paired executions, Invariant can infer the candidate relation:
+
+```
+target = source × 0.01
+```
+
+and then check that relation on a new execution.
+
+The important word here is **candidate**. Invariant does not treat a relation as true just because it fits a few examples. Inferred relations are kept as explicit artifacts and can be validated against additional executions.
+
+## Setup
+
+You need Python 3.12, Git, and `uv`.
+
+Clone the repository:
+
+```
+git clone https://github.com/mad-futurist/invariant-cli.git
+cd invariant-cli
+```
+
+Install the project dependencies:
+
+```
+uv sync
+```
+
+You do not need to activate the virtual environment manually. Commands can be run with `uv run`.
+
+Check that the CLI works:
+
+```
+uv run invariant --help
+```
+
+## Initialize a workspace
+
+```
+uv run invariant init --name my-project
+```
+
+Invariant creates a local `.invariant` directory:
+
+```
+.invariant/
+├── invariant.yaml
+├── executions/
+├── contracts/
+├── gates/
+└── results/
+```
+
+The directory contains local execution and verification artifacts and is not meant to be committed.
+
+## Capture an execution
+
+```
+uv run invariant capture -- python app.py
+```
+
+You can also point it at a workspace explicitly:
+
+```
+uv run invariant capture --workspace-root /path/to/project -- python app.py
+```
+
+Each capture receives an execution ID and is stored under `.invariant/executions/`.
+
+An execution records process metadata, stdout/stderr, filesystem changes, and observations produced by the available observers. JSON files are currently the first structured observation source.
+
+## Compare executions
+
+```
+uv run invariant compare SOURCE_EXECUTION TARGET_EXECUTION
+```
+
+A comparison can produce `MATCH`, `DIFF`, or `INCONCLUSIVE`.
+
+`INCONCLUSIVE` is used when there is not enough comparable observation data. An absence of detected differences is not automatically treated as proof of equivalence.
+
+## Infer a candidate translation contract
+
+```
+uv run invariant contract infer \
+    --pair SOURCE_1:TARGET_1 \
+    --pair SOURCE_2:TARGET_2 \
+    --pair SOURCE_3:TARGET_3
+```
+
+Using several pairs matters. A value that happens to be equal once is weak evidence; a relation that remains stable across different transitions is more interesting.
+
+Candidate contracts are written to `.invariant/contracts/`.
+
+A candidate may contain a direct relation:
+
+```
+source/state.json#balance
+    ↔
+target/account.json#remaining
+```
+
+or a transformation:
+
+```
+source/state.json#balance_cents  × 0.01  ↔  target/account.json#remaining
+```
+
+The current relation inference supports exact and affine numeric relations. More forms of evidence and matching will be added incrementally.
+
+## Validate a candidate contract
+
+The executions used for inference should not also be the only validation data. Capture a new source/target pair and run:
+
+```
+uv run invariant contract validate CONTRACT_FILE --pair SOURCE_NEW:TARGET_NEW
+```
+
+Validation produces `PASS`, `FAIL`, or `INCONCLUSIVE`.
+
+This gives a simple experimental loop:
+
+```
+source executions ─┐
+                   ├── infer ── candidate contract
+target executions ─┘                 │
+                                     ▼
+                            held-out executions
+                                     │
+                                     ▼
+                              validate relation
+```
+
+## Experiments
+
+Experimental applications live under `experiments/`. They are intentionally small — their job is to make one verification problem easy to reproduce.
+
+Current experiments include different source/target field names and different numeric representations (cents vs. euros).
+
+## Development
+
+```
+uv run pytest
+uv run ruff check .
+uv run ruff format .
+uv run mypy src tests
+```
+
+Add a runtime dependency:
+
+```
+uv add <package>
+```
+
+Add a development dependency:
+
+```
+uv add --dev <package>
+```
+
+Commit both `pyproject.toml` and `uv.lock` after dependency changes.
+
+## Repository structure
+
+```
+src/invariant_cli/
+├── commands/
+├── workspace/
+├── execution/
+├── observation/
+├── matching/
+├── comparison/
+├── contracts/
+├── gates/
+├── adapters/
+└── reporting/
+
+tests/
+experiments/
+```
+
+## Where this is going
+
+The current experiments only use a small part of what a translation contract may eventually contain.
+
+A real software migration can change file formats, database schemas, service boundaries, APIs, event flows, ownership, and architecture while still preserving the behavior that matters.
+
+The longer-term problem Invariant is exploring is therefore not simply:
+
+```
+Are these two files equal?
+```
+
+but:
+
+```
+Which parts of these two systems correspond,
+what relation connects them,
+and does that relation continue to hold?
+```
+
+The project is being built around that question one reproducible experiment at a time.
+
+## License
+
+Apache License 2.0.
 
 ## Requirements
 

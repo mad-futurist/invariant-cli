@@ -14,6 +14,7 @@ from invariant_cli.contracts.storage import (
 )
 from invariant_cli.contracts.validation import validate_candidate_contract
 from invariant_cli.execution.reader import load_execution_observations
+from invariant_cli.matching.model import EvidenceKind
 from invariant_cli.workspace.model import WorkspacePaths
 from invariant_cli.workspace.service import (
     get_workspace_paths,
@@ -95,7 +96,7 @@ def infer_contract(
     candidates = infer_correspondences(observation_pairs)
 
     contract = CandidateTranslationContract(
-        version=1,
+        version=2,
         paired_executions=pair_refs,
         correspondences=candidates,
     )
@@ -113,20 +114,20 @@ def infer_contract(
         typer.echo("")
 
         for candidate in candidates:
-            typer.echo(f"{candidate.source.resource}#{candidate.source.path}")
-
+            typer.echo(candidate.source.locator)
             typer.echo("  <->")
-
-            typer.echo(f"{candidate.target.resource}#{candidate.target.path}")
-
-            typer.echo(
-                "  dynamic evidence: "
-                f"{candidate.evidence.matched_pairs}/"
-                f"{candidate.evidence.total_pairs}"
+            typer.echo(candidate.target.locator)
+            dyn = next(
+                (e for e in candidate.evidence if e.kind == EvidenceKind.DYNAMIC_TRANSITION),
+                None,
             )
-
-            typer.echo(f"  distinct transitions: {candidate.evidence.distinct_transitions}")
-
+            if dyn:
+                typer.echo(
+                    f"  dynamic evidence: "
+                    f"{dyn.attributes['matched_pairs']}/"
+                    f"{dyn.attributes['total_pairs']}"
+                )
+                typer.echo(f"  distinct transitions: {dyn.attributes['distinct_transitions']}")
             typer.echo("")
     else:
         typer.echo("No correspondence candidates found.")
@@ -238,12 +239,7 @@ def validate_contract(
             f": {pair_result.verdict.value}"
         )
         for item in pair_result.correspondences:
-            typer.echo(
-                f"  {item.source.resource}#{item.source.path}"
-                " <-> "
-                f"{item.target.resource}#{item.target.path}"
-                f": {item.verdict.value}"
-            )
+            typer.echo(f"  {item.source.locator} <-> {item.target.locator}: {item.verdict.value}")
 
     typer.echo("")
     typer.echo(f"Saved: {output_path}")

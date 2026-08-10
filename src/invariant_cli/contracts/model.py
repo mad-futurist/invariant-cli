@@ -1,25 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-
-@dataclass(frozen=True)
-class ObservationSelector:
-    resource: str
-    path: str
-
-
-@dataclass(frozen=True)
-class DynamicEvidence:
-    matched_pairs: int
-    total_pairs: int
-    distinct_transitions: int
-
-    @property
-    def score(self) -> float:
-        if self.total_pairs == 0:
-            return 0.0
-
-        return self.matched_pairs / self.total_pairs
+from invariant_cli.matching.model import EntityRef, Evidence
 
 
 class RelationKind(StrEnum):
@@ -37,10 +19,10 @@ class Relation:
 
 @dataclass(frozen=True)
 class CorrespondenceCandidate:
-    source: ObservationSelector
-    target: ObservationSelector
+    source: EntityRef
+    target: EntityRef
     relation: Relation
-    evidence: DynamicEvidence
+    evidence: list[Evidence]
 
 
 @dataclass(frozen=True)

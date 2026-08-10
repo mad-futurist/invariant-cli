@@ -7,13 +7,17 @@ import yaml
 from invariant_cli.contracts.model import (
     CandidateTranslationContract,
     CorrespondenceCandidate,
-    DynamicEvidence,
     ExecutionPairRef,
-    ObservationSelector,
     Relation,
     RelationKind,
 )
 from invariant_cli.contracts.validation import ContractValidationResult
+from invariant_cli.matching.model import (
+    EntityKind,
+    EntityRef,
+    Evidence,
+    EvidenceKind,
+)
 from invariant_cli.observation.model import serialize_value
 
 
@@ -45,26 +49,28 @@ def save_candidate_contract(
         "correspondences": [
             {
                 "source": {
-                    "resource": candidate.source.resource,
-                    "path": candidate.source.path,
+                    "kind": candidate.source.kind.value,
+                    "namespace": candidate.source.namespace,
+                    "identifier": candidate.source.identifier,
                 },
                 "target": {
-                    "resource": candidate.target.resource,
-                    "path": candidate.target.path,
+                    "kind": candidate.target.kind.value,
+                    "namespace": candidate.target.namespace,
+                    "identifier": candidate.target.identifier,
                 },
                 "relation": {
                     "kind": candidate.relation.kind.value,
                     "scale": candidate.relation.scale,
                     "offset": candidate.relation.offset,
                 },
-                "evidence": {
-                    "dynamic": {
-                        "matched_pairs": (candidate.evidence.matched_pairs),
-                        "total_pairs": (candidate.evidence.total_pairs),
-                        "distinct_transitions": (candidate.evidence.distinct_transitions),
-                        "score": candidate.evidence.score,
+                "evidence": [
+                    {
+                        "kind": ev.kind.value,
+                        "producer": ev.producer,
+                        "attributes": ev.attributes,
                     }
-                },
+                    for ev in candidate.evidence
+                ],
             }
             for candidate in contract.correspondences
         ],
@@ -96,28 +102,35 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
     correspondences: list[CorrespondenceCandidate] = []
 
     for entry in data.get("correspondences", []):
-        dynamic = entry["evidence"]["dynamic"]
+        src = entry["source"]
+        tgt = entry["target"]
+        rel = entry.get("relation", {})
 
         correspondences.append(
             CorrespondenceCandidate(
-                source=ObservationSelector(
-                    resource=entry["source"]["resource"],
-                    path=entry["source"]["path"],
+                source=EntityRef(
+                    kind=EntityKind(src.get("kind", "json_field")),
+                    namespace=src["namespace"],
+                    identifier=src["identifier"],
                 ),
-                target=ObservationSelector(
-                    resource=entry["target"]["resource"],
-                    path=entry["target"]["path"],
+                target=EntityRef(
+                    kind=EntityKind(tgt.get("kind", "json_field")),
+                    namespace=tgt["namespace"],
+                    identifier=tgt["identifier"],
                 ),
                 relation=Relation(
-                    kind=RelationKind(entry.get("relation", {}).get("kind", "exact")),
-                    scale=str(entry.get("relation", {}).get("scale", "1")),
-                    offset=str(entry.get("relation", {}).get("offset", "0")),
+                    kind=RelationKind(rel.get("kind", "exact")),
+                    scale=str(rel.get("scale", "1")),
+                    offset=str(rel.get("offset", "0")),
                 ),
-                evidence=DynamicEvidence(
-                    matched_pairs=dynamic["matched_pairs"],
-                    total_pairs=dynamic["total_pairs"],
-                    distinct_transitions=dynamic["distinct_transitions"],
-                ),
+                evidence=[
+                    Evidence(
+                        kind=EvidenceKind(ev["kind"]),
+                        producer=ev["producer"],
+                        attributes=ev.get("attributes", {}),
+                    )
+                    for ev in entry.get("evidence", [])
+                ],
             )
         )
 
@@ -151,12 +164,14 @@ def save_contract_validation(
                 "correspondences": [
                     {
                         "source": {
-                            "resource": item.source.resource,
-                            "path": item.source.path,
+                            "kind": item.source.kind.value,
+                            "namespace": item.source.namespace,
+                            "identifier": item.source.identifier,
                         },
                         "target": {
-                            "resource": item.target.resource,
-                            "path": item.target.path,
+                            "kind": item.target.kind.value,
+                            "namespace": item.target.namespace,
+                            "identifier": item.target.identifier,
                         },
                         "verdict": item.verdict.value,
                         "source_transition": (

@@ -1,9 +1,9 @@
 [project]
 name = "invariant-cli"
 version = "0.1.0"
-description = "Add your description here"
+description = "Experimental CLI for capturing software executions and inferring verifiable translation relations."
 authors = [
-    { name = "Yaroslava Khrabrova", email = "yaroslava@smartbuildingenergies.onmicrosoft.com" }
+    { name = "Yaroslava Khrabrova" }
 ]
 requires-python = ">=3.12"
 dependencies = [

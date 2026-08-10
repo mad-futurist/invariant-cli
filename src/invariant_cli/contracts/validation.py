@@ -3,17 +3,14 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from invariant_cli.contracts.inference import (
-    ObservedTransition,
-    flatten_observations,
-)
 from invariant_cli.contracts.model import (
     CandidateTranslationContract,
     CorrespondenceCandidate,
     ExecutionPairRef,
-    ObservationSelector,
 )
 from invariant_cli.contracts.relations import apply_relation, to_decimal
+from invariant_cli.matching.model import EntityKind, EntityRef
+from invariant_cli.matching.transition import ObservedTransition, flatten_observations
 from invariant_cli.observation.model import Observation
 
 
@@ -25,8 +22,8 @@ class ValidationVerdict(StrEnum):
 
 @dataclass(frozen=True)
 class CorrespondenceValidation:
-    source: ObservationSelector
-    target: ObservationSelector
+    source: EntityRef
+    target: EntityRef
     verdict: ValidationVerdict
     source_transition: ObservedTransition | None
     target_transition: ObservedTransition | None
@@ -83,11 +80,15 @@ def _validate_pair(
     results: list[CorrespondenceValidation] = []
 
     for candidate in contract.correspondences:
-        source_key = (candidate.source.resource, candidate.source.path)
-        target_key = (candidate.target.resource, candidate.target.path)
+        source_key = _observation_key(candidate.source)
+        target_key = _observation_key(candidate.target)
 
-        source_transition = source_values.get(source_key)
-        target_transition = target_values.get(target_key)
+        if source_key is None or target_key is None:
+            source_transition = None
+            target_transition = None
+        else:
+            source_transition = source_values.get(source_key)
+            target_transition = target_values.get(target_key)
 
         if source_transition is None or target_transition is None:
             verdict = ValidationVerdict.INCONCLUSIVE
@@ -121,6 +122,12 @@ def _aggregate_verdict(verdicts: list[ValidationVerdict]) -> ValidationVerdict:
     if ValidationVerdict.INCONCLUSIVE in verdicts:
         return ValidationVerdict.INCONCLUSIVE
     return ValidationVerdict.PASS
+
+
+def _observation_key(entity: EntityRef) -> tuple[str, str] | None:
+    if entity.kind != EntityKind.JSON_FIELD:
+        return None
+    return (entity.namespace, entity.identifier)
 
 
 def _relation_holds(

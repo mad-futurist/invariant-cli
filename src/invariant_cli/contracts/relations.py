@@ -1,8 +1,8 @@
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from invariant_cli.contracts.inference import ObservedTransition
 from invariant_cli.contracts.model import Relation, RelationKind
+from invariant_cli.matching.transition import ObservedTransition, values_equal
 
 
 def infer_relation(
@@ -53,7 +53,9 @@ def _infer_exact(
     target: list[ObservedTransition],
 ) -> Relation | None:
     for source_t, target_t in zip(source, target, strict=True):
-        if source_t.before != target_t.before or source_t.after != target_t.after:
+        if not values_equal(source_t.before, target_t.before):
+            return None
+        if not values_equal(source_t.after, target_t.after):
             return None
 
     return Relation(kind=RelationKind.EXACT)

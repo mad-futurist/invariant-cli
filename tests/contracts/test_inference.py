@@ -1,5 +1,6 @@
 from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import Relation, RelationKind
+from invariant_cli.matching.model import EvidenceKind
 from invariant_cli.observation.model import (
     Observation,
     ValueChange,
@@ -89,16 +90,16 @@ def test_infers_correspondence_from_transitions() -> None:
 
     candidate = candidates[0]
 
-    assert candidate.source.resource == "state.json"
-    assert candidate.source.path == "balance"
+    assert candidate.source.namespace == "state.json"
+    assert candidate.source.identifier == "balance"
 
-    assert candidate.target.resource == "account.json"
-    assert candidate.target.path == "remaining"
+    assert candidate.target.namespace == "account.json"
+    assert candidate.target.identifier == "remaining"
 
-    assert candidate.evidence.matched_pairs == 3
-    assert candidate.evidence.total_pairs == 3
-    assert candidate.evidence.distinct_transitions == 3
-    assert candidate.evidence.score == 1.0
+    dyn = next(e for e in candidate.evidence if e.kind == EvidenceKind.DYNAMIC_TRANSITION)
+    assert dyn.attributes["matched_pairs"] == 3
+    assert dyn.attributes["total_pairs"] == 3
+    assert dyn.attributes["distinct_transitions"] == 3
     assert candidate.relation == Relation(kind=RelationKind.EXACT)
 
 
@@ -272,6 +273,6 @@ def test_preserves_ambiguous_candidates() -> None:
 
     assert len(candidates) == 2
 
-    target_paths = {candidate.target.path for candidate in candidates}
+    target_paths = {candidate.target.identifier for candidate in candidates}
 
     assert target_paths == {"remaining", "total"}
