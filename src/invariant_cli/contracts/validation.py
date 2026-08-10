@@ -1,16 +1,19 @@
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from invariant_cli.contracts.inference import (
     ObservedTransition,
     flatten_observations,
-    transitions_equal,
 )
 from invariant_cli.contracts.model import (
     CandidateTranslationContract,
+    CorrespondenceCandidate,
     ExecutionPairRef,
     ObservationSelector,
 )
+from invariant_cli.contracts.relations import apply_relation, to_decimal
 from invariant_cli.observation.model import Observation
 
 
@@ -88,7 +91,7 @@ def _validate_pair(
 
         if source_transition is None or target_transition is None:
             verdict = ValidationVerdict.INCONCLUSIVE
-        elif transitions_equal(source_transition, target_transition):
+        elif _relation_holds(candidate, source_transition, target_transition):
             verdict = ValidationVerdict.PASS
         else:
             verdict = ValidationVerdict.FAIL
@@ -118,3 +121,24 @@ def _aggregate_verdict(verdicts: list[ValidationVerdict]) -> ValidationVerdict:
     if ValidationVerdict.INCONCLUSIVE in verdicts:
         return ValidationVerdict.INCONCLUSIVE
     return ValidationVerdict.PASS
+
+
+def _relation_holds(
+    candidate: CorrespondenceCandidate,
+    source: ObservedTransition,
+    target: ObservedTransition,
+) -> bool:
+    transformed_before = apply_relation(candidate.relation, source.before)
+    transformed_after = apply_relation(candidate.relation, source.after)
+
+    return _values_match(transformed_before, target.before) and _values_match(
+        transformed_after, target.after
+    )
+
+
+def _values_match(left: Any, right: Any) -> bool:
+    if isinstance(left, Decimal):
+        right_decimal = to_decimal(right)
+        return right_decimal is not None and bool(left == right_decimal)
+
+    return bool(left == right)

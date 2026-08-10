@@ -139,6 +139,12 @@ def test_contract_infer_command(tmp_path: Path) -> None:
             "path": "remaining",
         }
 
+        assert correspondence["relation"] == {
+            "kind": "exact",
+            "scale": "1",
+            "offset": "0",
+        }
+
         dynamic = correspondence["evidence"]["dynamic"]
 
         assert dynamic["matched_pairs"] == 3

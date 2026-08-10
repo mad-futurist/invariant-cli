@@ -1,4 +1,5 @@
 from invariant_cli.contracts.inference import infer_correspondences
+from invariant_cli.contracts.model import Relation, RelationKind
 from invariant_cli.observation.model import (
     Observation,
     ValueChange,
@@ -98,6 +99,7 @@ def test_infers_correspondence_from_transitions() -> None:
     assert candidate.evidence.total_pairs == 3
     assert candidate.evidence.distinct_transitions == 3
     assert candidate.evidence.score == 1.0
+    assert candidate.relation == Relation(kind=RelationKind.EXACT)
 
 
 def test_does_not_infer_inconsistent_correspondence() -> None:

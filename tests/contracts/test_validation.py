@@ -4,6 +4,8 @@ from invariant_cli.contracts.model import (
     DynamicEvidence,
     ExecutionPairRef,
     ObservationSelector,
+    Relation,
+    RelationKind,
 )
 from invariant_cli.contracts.validation import (
     ValidationVerdict,
@@ -61,6 +63,7 @@ def contract() -> CandidateTranslationContract:
                     resource=("experiments/translation_contract_demo/target/account.json"),
                     path="remaining",
                 ),
+                relation=Relation(kind=RelationKind.EXACT),
                 evidence=DynamicEvidence(
                     matched_pairs=3,
                     total_pairs=3,

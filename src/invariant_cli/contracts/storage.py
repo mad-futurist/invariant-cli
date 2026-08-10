@@ -10,6 +10,8 @@ from invariant_cli.contracts.model import (
     DynamicEvidence,
     ExecutionPairRef,
     ObservationSelector,
+    Relation,
+    RelationKind,
 )
 from invariant_cli.contracts.validation import ContractValidationResult
 from invariant_cli.observation.model import serialize_value
@@ -49,6 +51,11 @@ def save_candidate_contract(
                 "target": {
                     "resource": candidate.target.resource,
                     "path": candidate.target.path,
+                },
+                "relation": {
+                    "kind": candidate.relation.kind.value,
+                    "scale": candidate.relation.scale,
+                    "offset": candidate.relation.offset,
                 },
                 "evidence": {
                     "dynamic": {
@@ -100,6 +107,11 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
                 target=ObservationSelector(
                     resource=entry["target"]["resource"],
                     path=entry["target"]["path"],
+                ),
+                relation=Relation(
+                    kind=RelationKind(entry.get("relation", {}).get("kind", "exact")),
+                    scale=str(entry.get("relation", {}).get("scale", "1")),
+                    offset=str(entry.get("relation", {}).get("offset", "0")),
                 ),
                 evidence=DynamicEvidence(
                     matched_pairs=dynamic["matched_pairs"],

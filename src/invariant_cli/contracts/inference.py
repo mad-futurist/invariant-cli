@@ -103,16 +103,14 @@ def infer_correspondences(
                 value for value in target_transitions if isinstance(value, ObservedTransition)
             ]
 
-            matched_pairs = sum(
-                transitions_equal(source_transition, target_transition)
-                for source_transition, target_transition in zip(
-                    typed_source_transitions,
-                    typed_target_transitions,
-                    strict=True,
-                )
+            from invariant_cli.contracts.relations import infer_relation
+
+            relation = infer_relation(
+                typed_source_transitions,
+                typed_target_transitions,
             )
 
-            if matched_pairs != len(pairs):
+            if relation is None:
                 continue
 
             source_resource, source_path = source_key
@@ -128,8 +126,9 @@ def infer_correspondences(
                         resource=target_resource,
                         path=target_path,
                     ),
+                    relation=relation,
                     evidence=DynamicEvidence(
-                        matched_pairs=matched_pairs,
+                        matched_pairs=len(pairs),
                         total_pairs=len(pairs),
                         distinct_transitions=distinct_transitions,
                     ),

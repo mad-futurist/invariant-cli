@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import StrEnum
 
 
 @dataclass(frozen=True)
@@ -21,10 +22,24 @@ class DynamicEvidence:
         return self.matched_pairs / self.total_pairs
 
 
+class RelationKind(StrEnum):
+    EXACT = "exact"
+    AFFINE = "affine"
+
+
+@dataclass(frozen=True)
+class Relation:
+    kind: RelationKind
+    # target = source * scale + offset
+    scale: str = "1"
+    offset: str = "0"
+
+
 @dataclass(frozen=True)
 class CorrespondenceCandidate:
     source: ObservationSelector
     target: ObservationSelector
+    relation: Relation
     evidence: DynamicEvidence
 
 
