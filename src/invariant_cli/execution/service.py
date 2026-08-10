@@ -6,9 +6,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from invariant_cli.execution.model import Execution
-from invariant_cli.observation import observe_json
 from invariant_cli.observation.filesystem import FileSystemDiff, diff_snapshots, snapshot_directory
+from invariant_cli.observation.json_observer import JsonObserver
 from invariant_cli.observation.model import Observation
+
+_JSON_OBSERVER = JsonObserver()
 
 
 def capture_process(
@@ -59,7 +61,7 @@ def capture_execution(
     before_contents = {
         path: (working_directory / path).read_text(encoding="utf-8")
         for path in before_snapshot
-        if (working_directory / path).is_file()
+        if (working_directory / path).is_file() and _JSON_OBSERVER.accepts(path)
     }
 
     execution = capture_process(
@@ -76,24 +78,22 @@ def capture_execution(
     observations: list[Observation] = []
 
     for changed_path in changed_paths:
-        if changed_path.suffix.lower() != ".json":
+        if not _JSON_OBSERVER.accepts(changed_path):
             continue
 
         absolute_path = working_directory / changed_path
 
-        before_content = before_contents.get(changed_path, "{}")
-        if absolute_path.exists():
-            after_content = absolute_path.read_text(encoding="utf-8")
-        else:
-            after_content = "{}"
+        before_content = before_contents.get(changed_path)
+        after_content = (
+            absolute_path.read_text(encoding="utf-8") if absolute_path.exists() else None
+        )
 
-        if before_content != after_content:
-            observations.append(
-                observe_json(
-                    str(changed_path),
-                    before_content,
-                    after_content,
-                )
-            )
+        observation = _JSON_OBSERVER.observe(
+            changed_path,
+            before_content,
+            after_content,
+        )
+        if observation is not None:
+            observations.append(observation)
 
     return replace(execution, filesystem_diff=filesystem_diff), observations

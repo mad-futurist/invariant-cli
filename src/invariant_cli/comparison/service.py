@@ -1,5 +1,6 @@
 from invariant_cli.comparison.model import (
     ComparisonResult,
+    ComparisonVerdict,
     ObservationDifference,
 )
 from invariant_cli.observation.model import Observation
@@ -13,6 +14,12 @@ def compare_observations(
 ) -> ComparisonResult:
     source_values = _index_observations(source)
     target_values = _index_observations(target)
+
+    if not source_values and not target_values:
+        return ComparisonResult(
+            verdict=ComparisonVerdict.INCONCLUSIVE,
+            differences=[],
+        )
 
     differences: list[ObservationDifference] = []
 
@@ -34,8 +41,9 @@ def compare_observations(
                 )
             )
 
+    verdict = ComparisonVerdict.DIFF if differences else ComparisonVerdict.MATCH
     return ComparisonResult(
-        matches=not differences,
+        verdict=verdict,
         differences=differences,
     )
 

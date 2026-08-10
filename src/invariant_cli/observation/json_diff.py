@@ -1,6 +1,6 @@
 from typing import Any
 
-from invariant_cli.observation.model import ValueChange
+from invariant_cli.observation.model import ABSENT, ValueChange
 
 
 def diff_json(
@@ -20,7 +20,7 @@ def diff_json(
                 changes.append(
                     ValueChange(
                         path=child_path,
-                        before=None,
+                        before=ABSENT,
                         after=after[key],
                     )
                 )
@@ -31,7 +31,7 @@ def diff_json(
                     ValueChange(
                         path=child_path,
                         before=before[key],
-                        after=None,
+                        after=ABSENT,
                     )
                 )
                 continue

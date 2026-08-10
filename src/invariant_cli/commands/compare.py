@@ -4,8 +4,9 @@ from pathlib import Path
 
 import typer
 
+from invariant_cli.comparison.model import ComparisonVerdict
 from invariant_cli.comparison.service import MISSING, compare_observations
-from invariant_cli.observation.model import Observation, ValueChange
+from invariant_cli.execution.reader import load_execution_observations
 from invariant_cli.workspace.service import get_workspace_paths, load_workspace_paths
 
 
@@ -30,40 +31,8 @@ def compare_command(
     if not target_path.exists():
         raise typer.BadParameter(f"Target execution not found: {target_execution}")
 
-    source_execution_data = json.loads(source_path.read_text(encoding="utf-8"))
-    target_execution_data = json.loads(target_path.read_text(encoding="utf-8"))
-
-    source_observations = [
-        Observation(
-            source=entry["source"],
-            kind=entry["kind"],
-            changes=[
-                ValueChange(
-                    path=change["path"],
-                    before=change["before"],
-                    after=change["after"],
-                )
-                for change in entry["changes"]
-            ],
-        )
-        for entry in source_execution_data.get("observations", [])
-    ]
-
-    target_observations = [
-        Observation(
-            source=entry["source"],
-            kind=entry["kind"],
-            changes=[
-                ValueChange(
-                    path=change["path"],
-                    before=change["before"],
-                    after=change["after"],
-                )
-                for change in entry["changes"]
-            ],
-        )
-        for entry in target_execution_data.get("observations", [])
-    ]
+    source_observations = load_execution_observations(source_path)
+    target_observations = load_execution_observations(target_path)
 
     result = compare_observations(source_observations, target_observations)
 
@@ -79,6 +48,7 @@ def compare_command(
             {
                 "source_execution": source_execution,
                 "target_execution": target_execution,
+                "verdict": result.verdict.value,
                 "matches": result.matches,
                 "differences": [
                     {
@@ -95,16 +65,17 @@ def compare_command(
         encoding="utf-8",
     )
 
-    if result.matches:
-        typer.echo("Comparison: MATCH")
+    typer.echo(f"Comparison: {result.verdict.value}")
+    if result.verdict == ComparisonVerdict.INCONCLUSIVE:
+        typer.echo("No comparable observations found.")
+    elif result.verdict == ComparisonVerdict.MATCH:
         typer.echo("No observable differences found.")
     else:
-        typer.echo("Comparison: FAILED")
         for difference in result.differences:
             typer.echo(f"{difference.source}")
             typer.echo(f"  {difference.path}")
             typer.echo(f"    source: {_format_value(difference.expected)}")
             typer.echo(f"    target: {_format_value(difference.actual)}")
-        typer.echo(f"{len(result.differences)} difference found.")
+        typer.echo(f"{len(result.differences)} difference(s) found.")
 
     typer.echo(f"Saved: {result_path}")

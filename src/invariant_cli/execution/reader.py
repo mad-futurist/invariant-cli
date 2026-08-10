@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from invariant_cli.observation.model import Observation, ValueChange
+from invariant_cli.observation.model import Observation, ValueChange, deserialize_value
 
 
 def load_execution_observations(
@@ -19,8 +19,8 @@ def load_execution_observations(
             changes=[
                 ValueChange(
                     path=change["path"],
-                    before=change["before"],
-                    after=change["after"],
+                    before=deserialize_value(change["before"]),
+                    after=deserialize_value(change["after"]),
                 )
                 for change in entry.get("changes", [])
             ],

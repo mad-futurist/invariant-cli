@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from invariant_cli.execution.model import Execution
-from invariant_cli.observation.model import Observation
+from invariant_cli.observation.model import Observation, serialize_value
 
 
 def save_execution(
@@ -22,8 +22,8 @@ def save_execution(
             "changes": [
                 {
                     "path": change.path,
-                    "before": change.before,
-                    "after": change.after,
+                    "before": serialize_value(change.before),
+                    "after": serialize_value(change.after),
                 }
                 for change in observation.changes
             ],

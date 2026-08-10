@@ -7,7 +7,7 @@ from invariant_cli.contracts.model import (
     DynamicEvidence,
     ObservationSelector,
 )
-from invariant_cli.observation.model import Observation
+from invariant_cli.observation.model import Observation, _AbsentType
 
 ObservationKey = tuple[str, str]
 
@@ -171,6 +171,11 @@ def _values_equal(
 def _transition_fingerprint(
     transition: ObservedTransition,
 ) -> str:
+    def _default(obj: Any) -> Any:
+        if isinstance(obj, _AbsentType):
+            return "__absent__"
+        raise TypeError(f"Not serializable: {type(obj)}")
+
     return json.dumps(
         {
             "before": transition.before,
@@ -179,4 +184,5 @@ def _transition_fingerprint(
         sort_keys=True,
         ensure_ascii=False,
         separators=(",", ":"),
+        default=_default,
     )
