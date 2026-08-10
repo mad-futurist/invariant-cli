@@ -1,3 +1,4 @@
+from invariant_cli.comparison.model import ComparisonVerdict
 from invariant_cli.comparison.service import MISSING, compare_observations
 from invariant_cli.observation.model import Observation, ValueChange
 
@@ -101,3 +102,11 @@ def test_detects_missing_target_observation() -> None:
     assert not result.matches
     assert result.differences[0].expected == "COMPLETED"
     assert result.differences[0].actual is MISSING
+
+
+def test_empty_observations_are_inconclusive() -> None:
+    result = compare_observations([], [])
+
+    assert result.verdict == ComparisonVerdict.INCONCLUSIVE
+    assert not result.matches
+    assert result.differences == []

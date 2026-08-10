@@ -104,7 +104,7 @@ def infer_correspondences(
             ]
 
             matched_pairs = sum(
-                _transitions_equal(source_transition, target_transition)
+                transitions_equal(source_transition, target_transition)
                 for source_transition, target_transition in zip(
                     typed_source_transitions,
                     typed_target_transitions,
@@ -139,20 +139,20 @@ def infer_correspondences(
     return candidates
 
 
-def _transitions_equal(
+def transitions_equal(
     source: ObservedTransition,
     target: ObservedTransition,
 ) -> bool:
-    return _values_equal(
+    return values_equal(
         source.before,
         target.before,
-    ) and _values_equal(
+    ) and values_equal(
         source.after,
         target.after,
     )
 
 
-def _values_equal(
+def values_equal(
     source: Any,
     target: Any,
 ) -> bool:
