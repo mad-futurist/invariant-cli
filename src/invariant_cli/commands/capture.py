@@ -1,12 +1,9 @@
-from dataclasses import replace
 from pathlib import Path
 
 import typer
 
-from invariant_cli.execution.service import capture_process
+from invariant_cli.execution.service import capture_execution
 from invariant_cli.execution.storage import save_execution
-from invariant_cli.observation import observe_json
-from invariant_cli.observation.filesystem import diff_snapshots, snapshot_directory
 from invariant_cli.workspace.service import get_workspace_paths, load_workspace_paths
 
 CommandArgument = typer.Argument(..., help="Command to execute and capture.")
@@ -53,33 +50,9 @@ def capture_command(
             "Provide the command to run, e.g.: invariant capture python app.py"
         )
 
-    before = snapshot_directory(analysis_root)
-
-    state_path = analysis_root / "experiments" / "demo_app" / "state.json"
-    before_content = state_path.read_text(encoding="utf-8") if state_path.exists() else "{}"
-
-    execution = capture_process(
+    execution, observations = capture_execution(
         command,
         working_directory=analysis_root,
-    )
-
-    after = snapshot_directory(analysis_root)
-    filesystem_diff = diff_snapshots(before, after)
-
-    after_content = state_path.read_text(encoding="utf-8") if state_path.exists() else "{}"
-    observations = []
-    if before_content != after_content:
-        observations.append(
-            observe_json(
-                str(state_path.relative_to(analysis_root)),
-                before_content,
-                after_content,
-            )
-        )
-
-    execution = replace(
-        execution,
-        filesystem_diff=filesystem_diff,
     )
 
     output_path = save_execution(

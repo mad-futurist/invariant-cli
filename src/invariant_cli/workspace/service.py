@@ -36,7 +36,6 @@ def initialize_workspace(
     root: Path,
     *,
     name: str,
-    force: bool = False,
 ) -> WorkspacePaths:
     paths = get_workspace_paths(root)
 
@@ -72,10 +71,6 @@ def find_workspace_root(start: Path) -> Path:
     for directory in (current, *current.parents):
         if (directory / ".invariant").is_dir():
             return directory
-
-    for workspace_dir in current.rglob(".invariant"):
-        if workspace_dir.is_dir():
-            return workspace_dir.parent
 
     raise FileNotFoundError(f"No Invariant workspace found from {start}")
 

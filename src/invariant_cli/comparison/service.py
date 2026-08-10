@@ -4,6 +4,8 @@ from invariant_cli.comparison.model import (
 )
 from invariant_cli.observation.model import Observation
 
+MISSING = object()
+
 
 def compare_observations(
     source: list[Observation],
@@ -19,8 +21,8 @@ def compare_observations(
     for key in sorted(keys):
         source_name, path = key
 
-        expected = source_values.get(key)
-        actual = target_values.get(key)
+        expected = source_values.get(key, MISSING)
+        actual = target_values.get(key, MISSING)
 
         if expected != actual:
             differences.append(

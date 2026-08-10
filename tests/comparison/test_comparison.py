@@ -1,4 +1,4 @@
-from invariant_cli.comparison.service import compare_observations
+from invariant_cli.comparison.service import MISSING, compare_observations
 from invariant_cli.observation.model import Observation, ValueChange
 
 
@@ -100,4 +100,4 @@ def test_detects_missing_target_observation() -> None:
 
     assert not result.matches
     assert result.differences[0].expected == "COMPLETED"
-    assert result.differences[0].actual is None
+    assert result.differences[0].actual is MISSING

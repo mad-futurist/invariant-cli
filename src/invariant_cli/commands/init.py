@@ -11,11 +11,6 @@ def init_command(
         "--name",
         help="Project name.",
     ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Overwrite the existing workspace configuration.",
-    ),
 ) -> None:
     """Initialize an Invariant workspace."""
 
@@ -25,7 +20,6 @@ def init_command(
         paths = initialize_workspace(
             root,
             name=name,
-            force=force,
         )
     except WorkspaceAlreadyExistsError as exc:
         typer.echo(str(exc), err=True)

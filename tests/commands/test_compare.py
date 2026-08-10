@@ -81,6 +81,6 @@ def test_compare_command_persists_results(tmp_path: Path) -> None:
         data = json.loads(result_files[0].read_text(encoding="utf-8"))
         assert data["matches"] is False
         assert data["differences"][0]["expected"] == "COMPLETED"
-        assert data["differences"][0]["actual"] is None
+        assert data["differences"][0]["actual"] == "<missing>"
     finally:
         os.chdir(original_cwd)

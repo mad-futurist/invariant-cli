@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from invariant_cli.comparison.service import compare_observations
+from invariant_cli.comparison.service import MISSING, compare_observations
 from invariant_cli.observation.model import Observation, ValueChange
 from invariant_cli.workspace.service import get_workspace_paths, load_workspace_paths
 
@@ -67,6 +67,11 @@ def compare_command(
 
     result = compare_observations(source_observations, target_observations)
 
+    def _format_value(value: object) -> str:
+        if value is MISSING:
+            return "<missing>"
+        return str(value)
+
     workspace.results.mkdir(parents=True, exist_ok=True)
     result_path = workspace.results / f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.json"
     result_path.write_text(
@@ -79,8 +84,8 @@ def compare_command(
                     {
                         "source": difference.source,
                         "path": difference.path,
-                        "expected": difference.expected,
-                        "actual": difference.actual,
+                        "expected": _format_value(difference.expected),
+                        "actual": _format_value(difference.actual),
                     }
                     for difference in result.differences
                 ],
@@ -98,8 +103,8 @@ def compare_command(
         for difference in result.differences:
             typer.echo(f"{difference.source}")
             typer.echo(f"  {difference.path}")
-            typer.echo(f"    source: {difference.expected}")
-            typer.echo(f"    target: {difference.actual}")
+            typer.echo(f"    source: {_format_value(difference.expected)}")
+            typer.echo(f"    target: {_format_value(difference.actual)}")
         typer.echo(f"{len(result.differences)} difference found.")
 
     typer.echo(f"Saved: {result_path}")
