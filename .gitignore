@@ -207,7 +207,7 @@ tempCodeRunnerFile.py
 .ruff_cache/
 
 # Invariant local workspace artifacts
-experiments/**/.invariant/
+.invariant/
 
 # PyPI configuration file
 .pypirc
