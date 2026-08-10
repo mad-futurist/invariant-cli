@@ -16,11 +16,20 @@ WorkspaceRootOption = typer.Option(
         "When provided, filesystem snapshots and command execution run from this root."
     ),
 )
+ObserveOption = typer.Option(
+    None,
+    "--observe",
+    help=(
+        "Workspace-relative file or glob to capture. "
+        "Pass multiple times to combine scopes. Defaults to the whole workspace."
+    ),
+)
 
 
 def capture_command(
     command: list[str] = CommandArgument,
     workspace_root: Path | None = WorkspaceRootOption,
+    observe: list[str] | None = ObserveOption,
 ) -> None:
     launch_dir = Path.cwd()
 
@@ -50,10 +59,14 @@ def capture_command(
             "Provide the command to run, e.g.: invariant capture python app.py"
         )
 
-    execution, observations = capture_execution(
-        command,
-        working_directory=analysis_root,
-    )
+    try:
+        execution, observations = capture_execution(
+            command,
+            working_directory=analysis_root,
+            include_patterns=observe,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
     output_path = save_execution(
         execution,

@@ -220,6 +220,8 @@ agent.md
 !experiments/translation_transform_demo/target/**
 !experiments/static_usage_demo/target/
 !experiments/static_usage_demo/target/**
+!experiments/sqlite_observer_demo/target/
+!experiments/sqlite_observer_demo/target/**
 
 # PyPI configuration file
 .pypirc

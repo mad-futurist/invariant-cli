@@ -1,8 +1,10 @@
 import os
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from invariant_cli.cli import app
@@ -27,11 +29,16 @@ def test_init_creates_workspace() -> None:
 
             assert root.exists()
             assert (root / "invariant.yaml").exists()
-            assert (root / "cases").exists()
+            assert not (root / "cases").exists()
+            assert (root / "executions").exists()
             assert (root / "observations").exists()
             assert (root / "contracts").exists()
             assert (root / "gates").exists()
             assert (root / "results").exists()
+
+            config = yaml.safe_load((root / "invariant.yaml").read_text(encoding="utf-8"))
+            created_at = datetime.fromisoformat(config["created_at"])
+            assert created_at.tzinfo is not None
         finally:
             os.chdir(original_cwd)
 

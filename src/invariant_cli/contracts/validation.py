@@ -124,10 +124,16 @@ def _aggregate_verdict(verdicts: list[ValidationVerdict]) -> ValidationVerdict:
     return ValidationVerdict.PASS
 
 
-def _observation_key(entity: EntityRef) -> tuple[str, str] | None:
-    if entity.kind != EntityKind.JSON_FIELD:
+def _observation_key(entity: EntityRef) -> tuple[str, str, str] | None:
+    observation_kinds = {
+        EntityKind.JSON_FIELD: "json",
+        EntityKind.SQLITE_FIELD: "sqlite",
+    }
+    observation_kind = observation_kinds.get(entity.kind)
+
+    if observation_kind is None:
         return None
-    return (entity.namespace, entity.identifier)
+    return (observation_kind, entity.namespace, entity.identifier)
 
 
 def _relation_holds(

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -12,7 +13,6 @@ class WorkspaceAlreadyExistsError(Exception):
 def get_workspace_paths(root: Path) -> WorkspacePaths:
     invariant_dir = root / ".invariant"
     config = invariant_dir / "invariant.yaml"
-    cases = invariant_dir / "cases"
     observations = invariant_dir / "observations"
     contracts = invariant_dir / "contracts"
     gates = invariant_dir / "gates"
@@ -23,7 +23,6 @@ def get_workspace_paths(root: Path) -> WorkspacePaths:
         root=root,
         invariant_dir=invariant_dir,
         config=config,
-        cases=cases,
         executions=executions,
         observations=observations,
         contracts=contracts,
@@ -44,7 +43,6 @@ def initialize_workspace(
 
     # Create the .invariant directory and subdirectories
     paths.invariant_dir.mkdir(parents=True, exist_ok=False)
-    paths.cases.mkdir(exist_ok=False)
     paths.executions.mkdir(exist_ok=False)
     paths.observations.mkdir(exist_ok=False)
     paths.contracts.mkdir(exist_ok=False)
@@ -56,10 +54,10 @@ def initialize_workspace(
         "name": name,
         "version": "0.1.0",
         "description": "A new invariant workspace.",
-        "created_at": str(root),
+        "created_at": datetime.now(UTC).isoformat(),
         "project": {"name": name},
     }
-    with open(paths.config, "w") as config_file:
+    with paths.config.open("w", encoding="utf-8") as config_file:
         yaml.safe_dump(default_config, config_file, sort_keys=False)
 
     return paths

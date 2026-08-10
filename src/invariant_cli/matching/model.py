@@ -4,6 +4,7 @@ from enum import StrEnum
 
 class EntityKind(StrEnum):
     JSON_FIELD = "json_field"
+    SQLITE_FIELD = "sqlite_field"
 
 
 @dataclass(frozen=True)

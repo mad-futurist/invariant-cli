@@ -12,6 +12,6 @@ class Observer(ABC):
     def observe(
         self,
         path: Path,
-        before_content: str | None,
-        after_content: str | None,
+        before_content: bytes | None,
+        after_content: bytes | None,
     ) -> Observation | None: ...

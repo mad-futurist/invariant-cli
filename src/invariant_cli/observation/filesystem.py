@@ -1,4 +1,5 @@
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,10 +37,14 @@ def hash_file(path: Path) -> str:
     return sha256.hexdigest()
 
 
-def snapshot_directory(root: Path) -> dict[Path, FileState]:
+def snapshot_directory(
+    root: Path,
+    *,
+    include_patterns: list[str] | None = None,
+) -> dict[Path, FileState]:
     snapshot: dict[Path, FileState] = {}
 
-    for path in root.rglob("*"):
+    for path in _candidate_files(root, include_patterns):
         if not path.is_file():
             continue
 
@@ -55,6 +60,34 @@ def snapshot_directory(root: Path) -> dict[Path, FileState]:
         )
 
     return snapshot
+
+
+def _candidate_files(root: Path, include_patterns: list[str] | None) -> Iterable[Path]:
+    if not include_patterns:
+        yield from root.rglob("*")
+        return
+
+    resolved_root = root.resolve()
+    seen: set[Path] = set()
+
+    for raw_pattern in include_patterns:
+        pattern = raw_pattern.replace("\\", "/")
+
+        if Path(pattern).is_absolute():
+            raise ValueError(f"Observe pattern must be relative to the workspace: {raw_pattern}")
+
+        for candidate in root.glob(pattern):
+            paths = candidate.rglob("*") if candidate.is_dir() else (candidate,)
+
+            for path in paths:
+                try:
+                    path.resolve().relative_to(resolved_root)
+                except ValueError:
+                    continue
+
+                if path not in seen:
+                    seen.add(path)
+                    yield path
 
 
 def diff_snapshots(

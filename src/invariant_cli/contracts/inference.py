@@ -88,18 +88,23 @@ def infer_correspondences(
             if relation is None:
                 continue
 
-            source_resource, source_path = source_key
-            target_resource, target_path = target_key
+            source_observation_kind, source_resource, source_path = source_key
+            target_observation_kind, target_resource, target_path = target_key
+            source_entity_kind = _entity_kind(source_observation_kind)
+            target_entity_kind = _entity_kind(target_observation_kind)
+
+            if source_entity_kind is None or target_entity_kind is None:
+                continue
 
             candidates.append(
                 CorrespondenceCandidate(
                     source=EntityRef(
-                        kind=EntityKind.JSON_FIELD,
+                        kind=source_entity_kind,
                         namespace=source_resource,
                         identifier=source_path,
                     ),
                     target=EntityRef(
-                        kind=EntityKind.JSON_FIELD,
+                        kind=target_entity_kind,
                         namespace=target_resource,
                         identifier=target_path,
                     ),
@@ -119,6 +124,14 @@ def infer_correspondences(
             )
 
     return candidates
+
+
+def _entity_kind(observation_kind: str) -> EntityKind | None:
+    if observation_kind == "json":
+        return EntityKind.JSON_FIELD
+    if observation_kind == "sqlite":
+        return EntityKind.SQLITE_FIELD
+    return None
 
 
 def transitions_equal(

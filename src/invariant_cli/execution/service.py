@@ -9,8 +9,15 @@ from invariant_cli.execution.model import Execution
 from invariant_cli.observation.filesystem import FileSystemDiff, diff_snapshots, snapshot_directory
 from invariant_cli.observation.json_observer import JsonObserver
 from invariant_cli.observation.model import Observation
+from invariant_cli.observation.registry import ObserverRegistry
+from invariant_cli.observation.sqlite_observer import SQLiteObserver
 
-_JSON_OBSERVER = JsonObserver()
+DEFAULT_OBSERVERS = ObserverRegistry(
+    [
+        JsonObserver(),
+        SQLiteObserver(),
+    ]
+)
 
 
 def capture_process(
@@ -56,12 +63,17 @@ def capture_execution(
     command: list[str],
     *,
     working_directory: Path,
+    include_patterns: list[str] | None = None,
+    observers: ObserverRegistry = DEFAULT_OBSERVERS,
 ) -> tuple[Execution, list[Observation]]:
-    before_snapshot = snapshot_directory(working_directory)
+    before_snapshot = snapshot_directory(
+        working_directory,
+        include_patterns=include_patterns,
+    )
     before_contents = {
-        path: (working_directory / path).read_text(encoding="utf-8")
+        path: (working_directory / path).read_bytes()
         for path in before_snapshot
-        if (working_directory / path).is_file() and _JSON_OBSERVER.accepts(path)
+        if (working_directory / path).is_file() and observers.accepts(path)
     }
 
     execution = capture_process(
@@ -69,7 +81,10 @@ def capture_execution(
         working_directory=working_directory,
     )
 
-    after_snapshot = snapshot_directory(working_directory)
+    after_snapshot = snapshot_directory(
+        working_directory,
+        include_patterns=include_patterns,
+    )
     filesystem_diff = diff_snapshots(before_snapshot, after_snapshot)
 
     changed_paths = sorted(
@@ -78,22 +93,20 @@ def capture_execution(
     observations: list[Observation] = []
 
     for changed_path in changed_paths:
-        if not _JSON_OBSERVER.accepts(changed_path):
+        if not observers.accepts(changed_path):
             continue
 
         absolute_path = working_directory / changed_path
 
         before_content = before_contents.get(changed_path)
-        after_content = (
-            absolute_path.read_text(encoding="utf-8") if absolute_path.exists() else None
-        )
+        after_content = absolute_path.read_bytes() if absolute_path.exists() else None
 
-        observation = _JSON_OBSERVER.observe(
-            changed_path,
-            before_content,
-            after_content,
+        observations.extend(
+            observers.observe(
+                changed_path,
+                before_content,
+                after_content,
+            )
         )
-        if observation is not None:
-            observations.append(observation)
 
     return replace(execution, filesystem_diff=filesystem_diff), observations

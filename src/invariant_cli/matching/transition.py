@@ -4,7 +4,7 @@ from typing import Any
 
 from invariant_cli.observation.model import Observation, serialize_value
 
-ObservationKey = tuple[str, str]
+ObservationKey = tuple[str, str, str]
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,7 @@ def flatten_observations(
 
     for observation in observations:
         for change in observation.changes:
-            transitions[(observation.source, change.path)] = ObservedTransition(
+            transitions[(observation.kind, observation.source, change.path)] = ObservedTransition(
                 before=change.before,
                 after=change.after,
             )

@@ -1,7 +1,8 @@
+import json
 from pathlib import Path
 
 from invariant_cli.observation import observe_json
-from invariant_cli.observation.model import Observation
+from invariant_cli.observation.model import ABSENT, Observation, ValueChange
 from invariant_cli.observation.observer import Observer
 
 
@@ -12,13 +13,26 @@ class JsonObserver(Observer):
     def observe(
         self,
         path: Path,
-        before_content: str | None,
-        after_content: str | None,
+        before_content: bytes | None,
+        after_content: bytes | None,
     ) -> Observation | None:
-        before = before_content or "{}"
-        after = after_content or "{}"
+        if before_content is None or after_content is None:
+            before = ABSENT if before_content is None else json.loads(before_content)
+            after = ABSENT if after_content is None else json.loads(after_content)
+
+            if before is after:
+                return None
+
+            return Observation(
+                source=path.as_posix(),
+                kind="json",
+                changes=[ValueChange(path="$", before=before, after=after)],
+            )
+
+        before = before_content.decode("utf-8")
+        after = after_content.decode("utf-8")
 
         if before == after:
             return None
 
-        return observe_json(str(path), before, after)
+        return observe_json(path.as_posix(), before, after)

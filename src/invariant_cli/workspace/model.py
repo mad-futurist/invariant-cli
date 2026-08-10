@@ -7,7 +7,6 @@ class WorkspacePaths:
     root: Path
     invariant_dir: Path
     config: Path
-    cases: Path
     executions: Path
     observations: Path
     contracts: Path

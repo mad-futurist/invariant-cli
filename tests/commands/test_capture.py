@@ -134,3 +134,39 @@ def test_capture_uses_explicit_workspace_root_from_another_directory(tmp_path: P
         assert data["filesystem_diff"]["modified"] == []
     finally:
         os.chdir(original_cwd)
+
+
+def test_capture_limits_filesystem_diff_to_observe_scope(tmp_path: Path) -> None:
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(tmp_path)
+        assert runner.invoke(app, ["init", "--name", "demo"]).exit_code == 0
+
+        (tmp_path / "state.json").write_text('{"value": 1}', encoding="utf-8")
+        (tmp_path / "unrelated.txt").write_text("before", encoding="utf-8")
+
+        command = (
+            "from pathlib import Path; "
+            "Path('state.json').write_text('{\"value\": 2}', encoding='utf-8'); "
+            "Path('unrelated.txt').write_text('after', encoding='utf-8')"
+        )
+        result = runner.invoke(
+            app,
+            [
+                "capture",
+                "--observe",
+                "*.json",
+                "--",
+                sys.executable,
+                "-c",
+                command,
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout
+        execution_file = next((tmp_path / ".invariant" / "executions").glob("*.json"))
+        data = json.loads(execution_file.read_text(encoding="utf-8"))
+        assert data["filesystem_diff"]["modified"] == ["state.json"]
+        assert data["observations"][0]["source"] == "state.json"
+    finally:
+        os.chdir(original_cwd)

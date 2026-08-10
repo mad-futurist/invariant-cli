@@ -62,9 +62,11 @@ The important word is **candidate**. A relation that fits a few examples is a hy
 Invariant can:
 
 - run a command and capture its process result;
-- record filesystem changes and structured changes inside JSON files;
+- limit filesystem capture to explicit files or glob patterns;
+- route changed resources through an observer registry;
+- record structured changes inside JSON documents and SQLite databases;
 - compare observations from two executions;
-- infer JSON-field correspondences from several source/target execution pairs;
+- infer JSON- and SQLite-field correspondences from several source/target execution pairs;
 - discover exact and affine numeric relations;
 - add simple Python AST usage evidence to dynamic candidates;
 - save candidate translation contracts as YAML;
@@ -116,6 +118,19 @@ uv run invariant capture --workspace-root /path/to/project -- python app.py
 ```
 
 Every capture receives an execution ID. The stored record includes command metadata, stdout, stderr, filesystem changes, and observations produced by the available observers.
+
+By default, capture still scans the workspace for compatibility with the early experiments. On a larger repository, limit the snapshot explicitly:
+
+```bash
+uv run invariant capture \
+  --observe "data/*.json" \
+  --observe "state/*.db" \
+  -- python app.py
+```
+
+`--observe` accepts workspace-relative files and glob patterns and can be passed more than once. Files outside those scopes are not hashed or included in the filesystem diff.
+
+The built-in observer registry currently recognizes JSON and SQLite resources. JSON changes are represented as document paths. SQLite changes use stable table, primary-key, and column paths such as `accounts[id=1].balance`.
 
 ### 3. Compare two executions
 
@@ -170,8 +185,9 @@ A failed relation produces `FAIL`. Missing observations produce `INCONCLUSIVE`. 
 The `experiments/` directory contains intentionally small applications:
 
 - `translation_contract_demo` uses different field names with the same value representation;
-- `translation_transform_demo` uses different names and cents-to-euros conversion.
+- `translation_transform_demo` uses different names and cents-to-euros conversion;
 - `static_usage_demo` runs the complete capture/infer/validate loop and combines the cents-to-euros relation with Python AST usage evidence from differently written updates.
+- `sqlite_observer_demo` runs the same inference and held-out validation pipeline against two different relational schemas, using scoped capture instead of scanning the complete workspace.
 
 These demos are test beds for one idea at a time. Experimental code stays outside the main package until its behavior and interface are understood.
 
@@ -179,7 +195,9 @@ These demos are test beds for one idea at a time. Experimental code stays outsid
 
 Invariant does not yet understand a whole software system.
 
-- Structured runtime observation is currently focused on JSON files.
+- Built-in structured observers currently support JSON and SQLite only.
+- SQLite observation reads committed database files and does not yet coordinate WAL files or live database processes.
+- Unscoped capture still walks the complete workspace; large projects should use `--observe`.
 - Relation inference supports exact and affine numeric transformations only.
 - Python static analysis is syntax-based. It does not build call graphs or follow data flow.
 - Static usage enriches existing dynamic candidates; it does not create correspondences by itself.
@@ -208,7 +226,7 @@ src/invariant_cli/
   commands/       CLI entry points
   workspace/      local Invariant workspace
   execution/      command capture and stored executions
-  observation/    observable state changes
+  observation/    filesystem snapshots, observer registry, JSON and SQLite state
   comparison/     direct execution comparison
   matching/       entities, transitions, and evidence producers
   contracts/      inference, storage, enrichment, and validation
@@ -221,7 +239,7 @@ The long-term problem is larger than comparing two files or translating code lin
 
 > Which parts of two systems correspond, what relationship connects them, which behavior must remain stable, and does the new implementation belong in the target architecture?
 
-The next experiments will move from simple AST usage toward static data flow and call context, then toward schema and architecture evidence. The intended end state is a translation contract supported by several independent evidence sources and enforced by reproducible gates.
+The capture layer is now extensible enough to test new state sources without rewriting execution orchestration. The next experiments can move toward static data flow and call context, then schema and architecture evidence. The intended end state is a translation contract supported by several independent evidence sources and enforced by reproducible gates.
 
 ## License
 
