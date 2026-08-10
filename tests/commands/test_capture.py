@@ -70,7 +70,10 @@ def test_capture_uses_explicit_workspace_root_from_another_directory(tmp_path: P
                 "--",
                 sys.executable,
                 "-c",
-                "from pathlib import Path; Path('created-by-capture-explicit-root.txt').write_text('x')",
+                (
+                    "from pathlib import Path; "
+                    "Path('created-by-capture-explicit-root.txt').write_text('x')"
+                ),
             ],
         )
 

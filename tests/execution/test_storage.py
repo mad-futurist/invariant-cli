@@ -4,6 +4,7 @@ from pathlib import Path
 
 from invariant_cli.execution.service import capture_process
 from invariant_cli.execution.storage import save_execution
+from invariant_cli.observation.model import Observation, ValueChange
 
 
 def test_save_execution(tmp_path: Path) -> None:
@@ -35,3 +36,44 @@ def test_save_execution(tmp_path: Path) -> None:
         "deleted": [],
         "modified": [],
     }
+    assert data["observations"] == []
+
+
+def test_save_execution_serializes_json_observations(tmp_path: Path) -> None:
+    execution = capture_process(
+        [
+            sys.executable,
+            "-c",
+            "print('captured')",
+        ],
+        working_directory=tmp_path,
+    )
+
+    executions_dir = tmp_path / "executions"
+    observations = [
+        Observation(
+            source="state.json",
+            kind="json",
+            changes=[
+                ValueChange(path="price", before=1, after=2),
+            ],
+        )
+    ]
+
+    output_path = save_execution(
+        execution,
+        directory=executions_dir,
+        observations=observations,
+    )
+
+    data = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert data["observations"] == [
+        {
+            "source": "state.json",
+            "kind": "json",
+            "changes": [
+                {"path": "price", "before": 1, "after": 2},
+            ],
+        }
+    ]
