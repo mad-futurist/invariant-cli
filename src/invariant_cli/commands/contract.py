@@ -3,9 +3,11 @@ from pathlib import Path
 import typer
 
 from invariant_cli.contracts.enrichment import enrich_with_static_usage
+from invariant_cli.contracts.expression_inference import infer_expression_correspondences
 from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import (
     CandidateTranslationContract,
+    EntityExpression,
     ExecutionPairRef,
 )
 from invariant_cli.contracts.storage import (
@@ -116,6 +118,7 @@ def infer_contract(
         )
 
     candidates = infer_correspondences(observation_pairs)
+    expression_candidates = infer_expression_correspondences(observation_pairs)
 
     if source_code is not None and target_code is not None:
         candidates = enrich_with_static_usage(
@@ -125,9 +128,10 @@ def infer_contract(
         )
 
     contract = CandidateTranslationContract(
-        version=2,
+        version=3,
         paired_executions=pair_refs,
         correspondences=candidates,
+        expression_correspondences=expression_candidates,
     )
 
     output_path = save_candidate_contract(
@@ -138,6 +142,7 @@ def infer_contract(
     typer.echo(f"Paired executions: {len(pair_refs)}")
 
     typer.echo(f"Candidate correspondences: {len(candidates)}")
+    typer.echo(f"Expression correspondences: {len(expression_candidates)}")
 
     if candidates:
         typer.echo("")
@@ -168,7 +173,19 @@ def infer_contract(
                     operations = ", ".join(str(operation) for operation in common_operations)
                     typer.echo(f"  static evidence: {operations}")
             typer.echo("")
-    else:
+    if expression_candidates:
+        for expression_candidate in expression_candidates:
+            typer.echo(_expression_label(expression_candidate.source))
+            typer.echo("  <->")
+            typer.echo(_expression_label(expression_candidate.target))
+            typer.echo(
+                f"  relation: {expression_candidate.relation.kind.value} "
+                f"(scale={expression_candidate.relation.scale}, "
+                f"offset={expression_candidate.relation.offset})"
+            )
+            typer.echo("")
+
+    if not candidates and not expression_candidates:
         typer.echo("No correspondence candidates found.")
 
     typer.echo(f"Saved: {output_path}")
@@ -275,6 +292,7 @@ def validate_contract(
 
     output_path = save_contract_validation(
         result,
+        contract=candidate_contract,
         directory=workspace.results,
         contract_path=contract_path,
     )
@@ -291,6 +309,12 @@ def validate_contract(
         )
         for item in pair_result.correspondences:
             typer.echo(f"  {item.source.locator} <-> {item.target.locator}: {item.verdict.value}")
+        for expression_item in pair_result.expression_correspondences:
+            typer.echo(
+                f"  {_expression_label(expression_item.source)} <-> "
+                f"{_expression_label(expression_item.target)}: "
+                f"{expression_item.verdict.value}"
+            )
 
     typer.echo("")
     typer.echo(f"Saved: {output_path}")
@@ -311,3 +335,10 @@ def _resolve_contract_path(
         raise typer.BadParameter(f"Contract not found: {contract}")
 
     return resolved
+
+
+def _expression_label(expression: EntityExpression) -> str:
+    components = " + ".join(component.locator for component in expression.components)
+    if len(expression.components) == 1:
+        return components
+    return f"{expression.kind.value}({components})"

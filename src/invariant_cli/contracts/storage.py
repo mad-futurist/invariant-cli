@@ -7,17 +7,29 @@ import yaml
 from invariant_cli.contracts.model import (
     CandidateTranslationContract,
     CorrespondenceCandidate,
+    EntityExpression,
     ExecutionPairRef,
+    ExpressionCorrespondenceCandidate,
+    ExpressionKind,
     Relation,
     RelationKind,
 )
-from invariant_cli.contracts.validation import ContractValidationResult
+from invariant_cli.contracts.validation import (
+    ContractValidationResult,
+    ExpressionComponentValidation,
+)
+from invariant_cli.evidence.builder import (
+    build_candidate_evidence_graph,
+    build_validation_evidence_graph,
+)
+from invariant_cli.evidence.model import evidence_graph_to_data
 from invariant_cli.matching.model import (
     EntityKind,
     EntityRef,
     Evidence,
     EvidenceKind,
 )
+from invariant_cli.matching.transition import ObservedTransition
 from invariant_cli.observation.model import serialize_value
 
 
@@ -74,6 +86,27 @@ def save_candidate_contract(
             }
             for candidate in contract.correspondences
         ],
+        "expression_correspondences": [
+            {
+                "source": _expression_to_data(candidate.source),
+                "target": _expression_to_data(candidate.target),
+                "relation": {
+                    "kind": candidate.relation.kind.value,
+                    "scale": candidate.relation.scale,
+                    "offset": candidate.relation.offset,
+                },
+                "evidence": [
+                    {
+                        "kind": item.kind.value,
+                        "producer": item.producer,
+                        "attributes": item.attributes,
+                    }
+                    for item in candidate.evidence
+                ],
+            }
+            for candidate in contract.expression_correspondences
+        ],
+        "evidence_graph": evidence_graph_to_data(build_candidate_evidence_graph(contract)),
     }
 
     output_path.write_text(
@@ -134,16 +167,41 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
             )
         )
 
+    expression_correspondences: list[ExpressionCorrespondenceCandidate] = []
+    for entry in data.get("expression_correspondences", []):
+        rel = entry.get("relation", {})
+        expression_correspondences.append(
+            ExpressionCorrespondenceCandidate(
+                source=_load_expression(entry["source"]),
+                target=_load_expression(entry["target"]),
+                relation=Relation(
+                    kind=RelationKind(rel.get("kind", "exact")),
+                    scale=str(rel.get("scale", "1")),
+                    offset=str(rel.get("offset", "0")),
+                ),
+                evidence=[
+                    Evidence(
+                        kind=EvidenceKind(item["kind"]),
+                        producer=item["producer"],
+                        attributes=item.get("attributes", {}),
+                    )
+                    for item in entry.get("evidence", [])
+                ],
+            )
+        )
+
     return CandidateTranslationContract(
         version=data["version"],
         paired_executions=paired_executions,
         correspondences=correspondences,
+        expression_correspondences=expression_correspondences,
     )
 
 
 def save_contract_validation(
     result: ContractValidationResult,
     *,
+    contract: CandidateTranslationContract,
     directory: Path,
     contract_path: Path,
 ) -> Path:
@@ -193,9 +251,22 @@ def save_contract_validation(
                     }
                     for item in pair.correspondences
                 ],
+                "expression_correspondences": [
+                    {
+                        "source": _expression_to_data(item.source),
+                        "target": _expression_to_data(item.target),
+                        "verdict": item.verdict.value,
+                        "source_transition": _transition_to_data(item.source_transition),
+                        "target_transition": _transition_to_data(item.target_transition),
+                        "source_components": _components_to_data(item.source_components),
+                        "target_components": _components_to_data(item.target_components),
+                    }
+                    for item in pair.expression_correspondences
+                ],
             }
             for pair in result.pairs
         ],
+        "evidence_graph": evidence_graph_to_data(build_validation_evidence_graph(contract, result)),
     }
 
     output_path.write_text(
@@ -204,3 +275,62 @@ def save_contract_validation(
     )
 
     return output_path
+
+
+def _entity_to_data(entity: EntityRef) -> dict[str, str]:
+    return {
+        "kind": entity.kind.value,
+        "namespace": entity.namespace,
+        "identifier": entity.identifier,
+    }
+
+
+def _expression_to_data(expression: EntityExpression) -> dict[str, object]:
+    return {
+        "kind": expression.kind.value,
+        "components": [_entity_to_data(component) for component in expression.components],
+    }
+
+
+def _load_expression(data: dict[str, object]) -> EntityExpression:
+    raw_components = data["components"]
+    if not isinstance(raw_components, list):
+        raise ValueError("Expression components must be a list.")
+
+    components: list[EntityRef] = []
+    for raw_component in raw_components:
+        if not isinstance(raw_component, dict):
+            raise ValueError("Expression component must be an object.")
+        components.append(
+            EntityRef(
+                kind=EntityKind(str(raw_component["kind"])),
+                namespace=str(raw_component["namespace"]),
+                identifier=str(raw_component["identifier"]),
+            )
+        )
+
+    return EntityExpression(
+        kind=ExpressionKind(str(data["kind"])),
+        components=tuple(components),
+    )
+
+
+def _transition_to_data(transition: ObservedTransition | None) -> object:
+    if transition is None:
+        return None
+    return {
+        "before": serialize_value(transition.before),
+        "after": serialize_value(transition.after),
+    }
+
+
+def _components_to_data(
+    components: list[ExpressionComponentValidation],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "entity": _entity_to_data(component.entity),
+            "transition": _transition_to_data(component.transition),
+        }
+        for component in components
+    ]

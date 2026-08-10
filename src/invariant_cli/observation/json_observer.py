@@ -3,14 +3,14 @@ from pathlib import Path
 
 from invariant_cli.observation import observe_json
 from invariant_cli.observation.model import ABSENT, Observation, ValueChange
-from invariant_cli.observation.observer import Observer
+from invariant_cli.observation.observer import ResourceDecoder
 
 
-class JsonObserver(Observer):
+class JsonObserver(ResourceDecoder):
     def accepts(self, path: Path) -> bool:
         return path.suffix.lower() == ".json"
 
-    def observe(
+    def decode(
         self,
         path: Path,
         before_content: bytes | None,

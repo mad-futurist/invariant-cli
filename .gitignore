@@ -222,6 +222,10 @@ agent.md
 !experiments/static_usage_demo/target/**
 !experiments/sqlite_observer_demo/target/
 !experiments/sqlite_observer_demo/target/**
+!experiments/cross_representation_demo/target/
+!experiments/cross_representation_demo/target/**
+!experiments/one_to_many_demo/target/
+!experiments/one_to_many_demo/target/**
 
 # PyPI configuration file
 .pypirc

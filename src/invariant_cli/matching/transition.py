@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from invariant_cli.observation.model import Observation, serialize_value
@@ -33,7 +34,7 @@ def values_equal(source: Any, target: Any) -> bool:
     if isinstance(source, bool) or isinstance(target, bool):
         return type(source) is type(target) and source == target
 
-    if isinstance(source, (int, float)) and isinstance(target, (int, float)):
+    if isinstance(source, (int, float, Decimal)) and isinstance(target, (int, float, Decimal)):
         return source == target
 
     return type(source) is type(target) and source == target

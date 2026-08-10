@@ -4,14 +4,14 @@ from pathlib import Path
 from typing import Any
 
 from invariant_cli.observation.model import ABSENT, Observation, ValueChange
-from invariant_cli.observation.observer import Observer
+from invariant_cli.observation.observer import ResourceDecoder
 
 
-class SQLiteObserver(Observer):
+class SQLiteObserver(ResourceDecoder):
     def accepts(self, path: Path) -> bool:
         return path.suffix.lower() in {".db", ".sqlite", ".sqlite3"}
 
-    def observe(
+    def decode(
         self,
         path: Path,
         before_content: bytes | None,

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 
@@ -25,6 +26,10 @@ _ABSENT_JSON_MARKER = {"__invariant__": "absent"}
 def serialize_value(value: Any) -> Any:
     if isinstance(value, _AbsentType):
         return _ABSENT_JSON_MARKER
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return int(value)
+        return float(value)
     return value
 
 

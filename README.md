@@ -63,14 +63,18 @@ Invariant can:
 
 - run a command and capture its process result;
 - limit filesystem capture to explicit files or glob patterns;
-- route changed resources through an observer registry;
+- collect raw changes through an extensible capture-probe lifecycle;
+- normalize captured resources through JSON and SQLite decoders;
 - record structured changes inside JSON documents and SQLite databases;
 - compare observations from two executions;
 - infer JSON- and SQLite-field correspondences from several source/target execution pairs;
 - discover exact and affine numeric relations;
+- infer a controlled one-to-many relation from one source field to the sum of two target fields;
 - add simple Python AST usage evidence to dynamic candidates;
 - save candidate translation contracts as YAML;
+- store a versioned Evidence Graph linking entities, relations, evidence, and training runs;
 - validate candidates on executions that were not used for inference;
+- link validation verdicts back to the tested correspondence in the Evidence Graph;
 - report `PASS`, `FAIL`, or `INCONCLUSIVE` instead of treating missing evidence as success.
 
 ## Install
@@ -130,7 +134,12 @@ uv run invariant capture \
 
 `--observe` accepts workspace-relative files and glob patterns and can be passed more than once. Files outside those scopes are not hashed or included in the filesystem diff.
 
-The built-in observer registry currently recognizes JSON and SQLite resources. JSON changes are represented as document paths. SQLite changes use stable table, primary-key, and column paths such as `accounts[id=1].balance`.
+Capture now has three deliberately separate steps: a runner executes the command, probes collect raw
+records, and normalizers turn those records into comparable observations. The first probe watches the
+filesystem; the built-in resource decoders recognize JSON and SQLite. JSON changes are represented as
+document paths. SQLite changes use stable table, primary-key, and column paths such as
+`accounts[id=1].balance`. This separation lets a later HTTP, database-protocol, or trace probe join the
+same pipeline without being disguised as a file observer.
 
 ### 3. Compare two executions
 
@@ -168,6 +177,23 @@ uv run invariant contract infer \
 
 Candidate contracts are saved under `.invariant/contracts/`.
 
+Every saved candidate also contains `evidence_graph` version 2. It is an inspectable graph, not a
+confidence score. Its nodes represent entities, proposed correspondences, relations, evidence items,
+expressions, and paired training executions. Edges say which entity or expression is the source or
+target, which entities form an expression, which relation a candidate uses, which evidence supports
+it, and which execution pairs produced dynamic evidence. Stable content-based IDs make the graph
+deterministic even though the contract file itself receives a new UUID.
+
+Contract format v3 keeps ordinary field-to-field candidates under `correspondences` and adds
+`expression_correspondences`. The first expression policy is intentionally small:
+
+```text
+identity(source_field) -> sum(target_field_1, target_field_2)
+```
+
+Inference accepts it only when both target components are present and their sum follows one exact or
+affine relation across every training pair. Existing pairwise contracts remain loadable.
+
 ### 5. Validate with new executions
 
 Do not validate a candidate only with the executions that produced it. Capture a new source/target pair and run:
@@ -178,7 +204,9 @@ uv run invariant contract validate \
   --pair SOURCE_NEW:TARGET_NEW
 ```
 
-A failed relation produces `FAIL`. Missing observations produce `INCONCLUSIVE`. Validation results are stored under `.invariant/results/`.
+A failed relation produces `FAIL`. Missing observations produce `INCONCLUSIVE`. Validation results are
+stored under `.invariant/results/`. Their Evidence Graph extends the candidate graph with held-out
+validation-pair and validation nodes, including `validates` links back to the correspondence under test.
 
 ## Experiments
 
@@ -188,6 +216,8 @@ The `experiments/` directory contains intentionally small applications:
 - `translation_transform_demo` uses different names and cents-to-euros conversion;
 - `static_usage_demo` runs the complete capture/infer/validate loop and combines the cents-to-euros relation with Python AST usage evidence from differently written updates.
 - `sqlite_observer_demo` runs the same inference and held-out validation pipeline against two different relational schemas, using scoped capture instead of scanning the complete workspace.
+- `cross_representation_demo` proves that the shared capture and matching pipeline can infer and validate a cents-to-euros relation from SQLite on one side and JSON on the other; it also checks both candidate and validation Evidence Graphs.
+- `one_to_many_demo` varies how one SQLite balance is split across two JSON fields, proving that neither component matches independently while their sum produces and validates one expression correspondence.
 
 These demos are test beds for one idea at a time. Experimental code stays outside the main package until its behavior and interface are understood.
 
@@ -199,9 +229,13 @@ Invariant does not yet understand a whole software system.
 - SQLite observation reads committed database files and does not yet coordinate WAL files or live database processes.
 - Unscoped capture still walks the complete workspace; large projects should use `--observe`.
 - Relation inference supports exact and affine numeric transformations only.
+- Expression inference currently supports one source component and exactly two summed target components.
+- Expression search considers every target-field pair, so larger observation sets will need candidate generation limits and ranking.
 - Python static analysis is syntax-based. It does not build call graphs or follow data flow.
 - Static usage enriches existing dynamic candidates; it does not create correspondences by itself.
 - Candidates are not ranked or fused into a confidence score.
+- Evidence Graph v2 is embedded in saved artifacts and is not yet queryable through a CLI command.
+- Dynamic evidence currently points to paired executions as a whole; it does not yet store individual observed-transition nodes.
 - There is no target-architecture model, implementation generator, or production gate system yet.
 
 These limits are intentional. Each feature should first prove itself in a controlled experiment and produce deterministic, inspectable evidence.
@@ -225,10 +259,12 @@ The main code is organized by responsibility:
 src/invariant_cli/
   commands/       CLI entry points
   workspace/      local Invariant workspace
-  execution/      command capture and stored executions
-  observation/    filesystem snapshots, observer registry, JSON and SQLite state
+  execution/      command runner and stored executions
+  capture/        probe lifecycle, raw records, and observation normalization
+  observation/    filesystem snapshots and JSON/SQLite resource decoders
   comparison/     direct execution comparison
   matching/       entities, transitions, and evidence producers
+  evidence/       Evidence Graph model and deterministic graph builders
   contracts/      inference, storage, enrichment, and validation
   gates/          future independent verification gates
 ```
@@ -239,7 +275,12 @@ The long-term problem is larger than comparing two files or translating code lin
 
 > Which parts of two systems correspond, what relationship connects them, which behavior must remain stable, and does the new implementation belong in the target architecture?
 
-The capture layer is now extensible enough to test new state sources without rewriting execution orchestration. The next experiments can move toward static data flow and call context, then schema and architecture evidence. The intended end state is a translation contract supported by several independent evidence sources and enforced by reproducible gates.
+The contract model now handles pairwise and a first one-to-many relation, while Evidence Graph v2
+makes both structures inspectable. The strongest next stage is ambiguity management: generate a
+bounded candidate set, attach independent dynamic, static-usage, and schema evidence, then rank without
+silently discarding alternatives. A validation gate should report why a candidate won and preserve
+conflicting candidates for review. That creates a safer base for richer expressions, static data flow,
+and eventual implementation generation.
 
 ## License
 

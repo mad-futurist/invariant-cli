@@ -1,23 +1,22 @@
-import subprocess
-import time
-from dataclasses import replace
-from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
 
+from invariant_cli.capture.filesystem_probe import FileSystemProbe
+from invariant_cli.capture.model import CaptureContext
+from invariant_cli.capture.normalizer import (
+    FileChangeNormalizer,
+    ObservationNormalizerRegistry,
+)
+from invariant_cli.capture.service import CaptureService
 from invariant_cli.execution.model import Execution
-from invariant_cli.observation.filesystem import FileSystemDiff, diff_snapshots, snapshot_directory
+from invariant_cli.execution.runner import SubprocessExecutionRunner
 from invariant_cli.observation.json_observer import JsonObserver
 from invariant_cli.observation.model import Observation
-from invariant_cli.observation.registry import ObserverRegistry
+from invariant_cli.observation.registry import ResourceDecoderRegistry
 from invariant_cli.observation.sqlite_observer import SQLiteObserver
 
-DEFAULT_OBSERVERS = ObserverRegistry(
-    [
-        JsonObserver(),
-        SQLiteObserver(),
-    ]
-)
+DEFAULT_DECODERS = ResourceDecoderRegistry([JsonObserver(), SQLiteObserver()])
+DEFAULT_OBSERVERS = DEFAULT_DECODERS
+DEFAULT_RUNNER = SubprocessExecutionRunner()
 
 
 def capture_process(
@@ -25,38 +24,7 @@ def capture_process(
     *,
     working_directory: Path,
 ) -> Execution:
-    execution_id = str(uuid4())
-
-    started_at = datetime.now(UTC)
-    started_timer = time.perf_counter()
-
-    completed = subprocess.run(
-        command,
-        cwd=working_directory,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    duration_seconds = time.perf_counter() - started_timer
-    finished_at = datetime.now(UTC)
-
-    return Execution(
-        id=execution_id,
-        command=command,
-        working_directory=working_directory,
-        started_at=started_at,
-        finished_at=finished_at,
-        duration_seconds=duration_seconds,
-        exit_code=completed.returncode,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
-        filesystem_diff=FileSystemDiff(
-            created=[],
-            deleted=[],
-            modified=[],
-        ),
-    )
+    return DEFAULT_RUNNER.run(command, working_directory=working_directory)
 
 
 def capture_execution(
@@ -64,49 +32,18 @@ def capture_execution(
     *,
     working_directory: Path,
     include_patterns: list[str] | None = None,
-    observers: ObserverRegistry = DEFAULT_OBSERVERS,
+    observers: ResourceDecoderRegistry = DEFAULT_DECODERS,
 ) -> tuple[Execution, list[Observation]]:
-    before_snapshot = snapshot_directory(
-        working_directory,
-        include_patterns=include_patterns,
+    service = CaptureService(
+        runner=DEFAULT_RUNNER,
+        probes=[FileSystemProbe(capture_content=observers.accepts)],
+        normalizers=ObservationNormalizerRegistry([FileChangeNormalizer(observers)]),
     )
-    before_contents = {
-        path: (working_directory / path).read_bytes()
-        for path in before_snapshot
-        if (working_directory / path).is_file() and observers.accepts(path)
-    }
-
-    execution = capture_process(
+    bundle = service.capture(
         command,
-        working_directory=working_directory,
+        context=CaptureContext(
+            working_directory=working_directory,
+            include_patterns=include_patterns,
+        ),
     )
-
-    after_snapshot = snapshot_directory(
-        working_directory,
-        include_patterns=include_patterns,
-    )
-    filesystem_diff = diff_snapshots(before_snapshot, after_snapshot)
-
-    changed_paths = sorted(
-        set(filesystem_diff.created) | set(filesystem_diff.deleted) | set(filesystem_diff.modified)
-    )
-    observations: list[Observation] = []
-
-    for changed_path in changed_paths:
-        if not observers.accepts(changed_path):
-            continue
-
-        absolute_path = working_directory / changed_path
-
-        before_content = before_contents.get(changed_path)
-        after_content = absolute_path.read_bytes() if absolute_path.exists() else None
-
-        observations.extend(
-            observers.observe(
-                changed_path,
-                before_content,
-                after_content,
-            )
-        )
-
-    return replace(execution, filesystem_diff=filesystem_diff), observations
+    return bundle.execution, bundle.observations
