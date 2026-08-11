@@ -17,7 +17,7 @@ from invariant_cli.evidence.model import (
     EvidenceNode,
     EvidenceNodeKind,
 )
-from invariant_cli.matching.model import EntityRef, EvidenceKind
+from invariant_cli.matching.model import EntityRef, EvidenceEffect, EvidenceKind
 from invariant_cli.matching.transition import ObservedTransition
 from invariant_cli.observation.model import serialize_value
 
@@ -76,10 +76,11 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                 attributes={
                     "kind": item.kind.value,
                     "producer": item.producer,
+                    "effect": item.effect.value,
                     **item.attributes,
                 },
             )
-            edges.append(EvidenceEdge(evidence, correspondence, EvidenceEdgeKind.SUPPORTS))
+            edges.append(EvidenceEdge(evidence, correspondence, _effect_edge(item.effect)))
 
             if item.kind == EvidenceKind.DYNAMIC_TRANSITION:
                 edges.extend(
@@ -127,10 +128,11 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                 attributes={
                     "kind": item.kind.value,
                     "producer": item.producer,
+                    "effect": item.effect.value,
                     **item.attributes,
                 },
             )
-            edges.append(EvidenceEdge(evidence, correspondence, EvidenceEdgeKind.SUPPORTS))
+            edges.append(EvidenceEdge(evidence, correspondence, _effect_edge(item.effect)))
             if item.kind == EvidenceKind.DYNAMIC_TRANSITION:
                 edges.extend(
                     EvidenceEdge(evidence, pair_id, EvidenceEdgeKind.DERIVED_FROM)
@@ -166,7 +168,7 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                 )
             )
 
-    return _graph(nodes, edges, version=3 if contract.candidate_sets else 2)
+    return _graph(nodes, edges, version=4 if contract.candidate_sets else 3)
 
 
 def build_validation_evidence_graph(
@@ -440,6 +442,14 @@ def _transition_data(transition: ObservedTransition | None) -> object:
 def _digest(value: object) -> str:
     canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def _effect_edge(effect: EvidenceEffect) -> EvidenceEdgeKind:
+    return {
+        EvidenceEffect.SUPPORTS: EvidenceEdgeKind.SUPPORTS,
+        EvidenceEffect.CONTRADICTS: EvidenceEdgeKind.CONTRADICTS,
+        EvidenceEffect.NEUTRAL: EvidenceEdgeKind.NEUTRAL,
+    }[effect]
 
 
 def _graph(

@@ -10,7 +10,7 @@ from invariant_cli.contracts.model import (
     ExpressionKind,
     RankedCandidate,
 )
-from invariant_cli.matching.model import EntityRef, Evidence, EvidenceKind
+from invariant_cli.matching.model import EntityRef, Evidence, EvidenceEffect, EvidenceKind
 from invariant_cli.matching.schema.observed import entity_ref
 from invariant_cli.matching.transition import flatten_observations
 from invariant_cli.observation.model import Observation
@@ -74,24 +74,33 @@ def _rank_set(
         return CandidateSet(source=source, status=CandidateSetStatus.REJECTED)
 
     scored = [
-        (shape, candidate, _ranking_factors(shape, candidate)) for shape, candidate in hypotheses
+        (
+            shape,
+            candidate,
+            _ranking_factors(shape, candidate),
+            _effect_counts(candidate.evidence),
+        )
+        for shape, candidate in hypotheses
     ]
     scored.sort(
         key=lambda item: (
+            item[3][1],
             -sum(item[2].values()),
+            -item[3][0],
             item[0].value,
             _target_key(item[1]),
         )
     )
 
     ranked: list[RankedCandidate] = []
-    previous_score: int | None = None
+    previous_rank_key: tuple[int, int, int] | None = None
     rank = 0
-    for shape, candidate, factors in scored:
+    for shape, candidate, factors, effect_counts in scored:
         score = sum(factors.values())
-        if score != previous_score:
+        rank_key = (effect_counts[1], -score, -effect_counts[0])
+        if rank_key != previous_rank_key:
             rank += 1
-            previous_score = score
+            previous_rank_key = rank_key
         ranked.append(
             RankedCandidate(
                 shape=shape,
@@ -103,12 +112,18 @@ def _rank_set(
         )
 
     top = ranked[0]
-    close_alternative = len(ranked) > 1 and top.score - ranked[1].score <= AMBIGUITY_MARGIN
-    evidence_kinds = {item.kind for item in top.candidate.evidence}
+    top_supports, top_contradictions = _effect_counts(top.candidate.evidence)
+    close_alternative = (
+        len(ranked) > 1
+        and _effect_counts(ranked[1].candidate.evidence)[1] == top_contradictions
+        and top.score - ranked[1].score <= AMBIGUITY_MARGIN
+    )
 
-    if close_alternative:
+    if top_contradictions:
+        status = CandidateSetStatus.REJECTED
+    elif close_alternative:
         status = CandidateSetStatus.AMBIGUOUS
-    elif len(evidence_kinds) < 2:
+    elif top_supports < 2:
         status = CandidateSetStatus.INSUFFICIENT_EVIDENCE
     else:
         status = CandidateSetStatus.CONFIDENT_CANDIDATE
@@ -175,7 +190,20 @@ def _static_score(evidence: list[Evidence]) -> int:
 
 
 def _evidence(evidence: list[Evidence], kind: EvidenceKind) -> Evidence | None:
-    return next((item for item in evidence if item.kind == kind), None)
+    return next(
+        (item for item in evidence if item.kind == kind and item.effect == EvidenceEffect.SUPPORTS),
+        None,
+    )
+
+
+def _effect_counts(evidence: list[Evidence]) -> tuple[int, int]:
+    supports = {
+        (item.kind, item.producer) for item in evidence if item.effect == EvidenceEffect.SUPPORTS
+    }
+    contradicts = {
+        (item.kind, item.producer) for item in evidence if item.effect == EvidenceEffect.CONTRADICTS
+    }
+    return len(supports), len(contradicts)
 
 
 def _int_attribute(evidence: Evidence, name: str) -> int:

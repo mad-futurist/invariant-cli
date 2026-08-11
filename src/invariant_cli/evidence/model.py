@@ -20,6 +20,8 @@ class EvidenceEdgeKind(StrEnum):
     HAS_TARGET = "has_target"
     USES_RELATION = "uses_relation"
     SUPPORTS = "supports"
+    CONTRADICTS = "contradicts"
+    NEUTRAL = "neutral"
     DERIVED_FROM = "derived_from"
     VALIDATES = "validates"
     PART_OF = "part_of"

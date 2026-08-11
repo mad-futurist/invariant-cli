@@ -34,6 +34,7 @@ from invariant_cli.matching.model import (
     EntityKind,
     EntityRef,
     Evidence,
+    EvidenceEffect,
     EvidenceKind,
 )
 from invariant_cli.matching.transition import ObservedTransition
@@ -86,6 +87,7 @@ def save_candidate_contract(
                     {
                         "kind": ev.kind.value,
                         "producer": ev.producer,
+                        "effect": ev.effect.value,
                         "attributes": ev.attributes,
                     }
                     for ev in candidate.evidence
@@ -106,6 +108,7 @@ def save_candidate_contract(
                     {
                         "kind": item.kind.value,
                         "producer": item.producer,
+                        "effect": item.effect.value,
                         "attributes": item.attributes,
                     }
                     for item in candidate.evidence
@@ -176,6 +179,7 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
                         kind=EvidenceKind(ev["kind"]),
                         producer=ev["producer"],
                         attributes=ev.get("attributes", {}),
+                        effect=EvidenceEffect(ev.get("effect", "supports")),
                     )
                     for ev in entry.get("evidence", [])
                 ],
@@ -199,6 +203,7 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
                         kind=EvidenceKind(item["kind"]),
                         producer=item["producer"],
                         attributes=item.get("attributes", {}),
+                        effect=EvidenceEffect(item.get("effect", "supports")),
                     )
                     for item in entry.get("evidence", [])
                 ],

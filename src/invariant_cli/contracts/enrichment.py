@@ -2,8 +2,13 @@ from dataclasses import replace
 
 from invariant_cli.contracts.model import CorrespondenceCandidate
 from invariant_cli.matching.model import EntityKind, EvidenceKind
-from invariant_cli.matching.static.matcher import PRODUCER, build_static_usage_evidence
-from invariant_cli.matching.static.model import FieldUsage
+from invariant_cli.matching.static.matcher import (
+    DATA_FLOW_PRODUCER,
+    PRODUCER,
+    build_static_data_flow_evidence,
+    build_static_usage_evidence,
+)
+from invariant_cli.matching.static.model import FieldUsage, FunctionFlow
 
 
 def enrich_with_static_usage(
@@ -41,6 +46,34 @@ def enrich_with_static_usage(
         ]
         evidence.append(static_evidence)
 
+        enriched.append(replace(candidate, evidence=evidence))
+
+    return enriched
+
+
+def enrich_with_static_data_flow(
+    candidates: list[CorrespondenceCandidate],
+    source_flows: list[FunctionFlow],
+    target_flows: list[FunctionFlow],
+) -> list[CorrespondenceCandidate]:
+    enriched: list[CorrespondenceCandidate] = []
+
+    for candidate in candidates:
+        evidence = [
+            item
+            for item in candidate.evidence
+            if not (
+                item.kind == EvidenceKind.STATIC_DATA_FLOW and item.producer == DATA_FLOW_PRODUCER
+            )
+        ]
+        data_flow_evidence = build_static_data_flow_evidence(
+            candidate.source,
+            candidate.target,
+            source_flows,
+            target_flows,
+        )
+        if data_flow_evidence is not None:
+            evidence.append(data_flow_evidence)
         enriched.append(replace(candidate, evidence=evidence))
 
     return enriched

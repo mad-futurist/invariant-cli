@@ -5,6 +5,7 @@ from invariant_cli.contracts.enrichment import enrich_with_static_usage
 from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import CandidateSetStatus, CorrespondenceCandidate
 from invariant_cli.contracts.ranking import build_candidate_sets
+from invariant_cli.matching.model import Evidence, EvidenceEffect, EvidenceKind
 from invariant_cli.matching.static.model import FieldUsage, UsageOperation
 from invariant_cli.observation.model import Observation, ValueChange
 
@@ -88,3 +89,23 @@ def test_marks_source_without_surviving_hypotheses_rejected() -> None:
 
     assert candidate_set.status == CandidateSetStatus.REJECTED
     assert candidate_set.candidates == []
+
+
+def test_contradicting_evidence_rejects_candidate_without_dropping_it() -> None:
+    candidate = infer_correspondences(_pairs())[0]
+    contradicted = replace(
+        candidate,
+        evidence=[
+            *candidate.evidence,
+            Evidence(
+                kind=EvidenceKind.STATIC_DATA_FLOW,
+                producer="python-dataflow-v1",
+                effect=EvidenceEffect.CONTRADICTS,
+            ),
+        ],
+    )
+
+    candidate_set = build_candidate_sets([contradicted], [])[0]
+
+    assert candidate_set.status == CandidateSetStatus.REJECTED
+    assert [ranked.candidate for ranked in candidate_set.candidates] == [contradicted]

@@ -2,7 +2,10 @@ from pathlib import Path
 
 import typer
 
-from invariant_cli.contracts.enrichment import enrich_with_static_usage
+from invariant_cli.contracts.enrichment import (
+    enrich_with_static_data_flow,
+    enrich_with_static_usage,
+)
 from invariant_cli.contracts.expression_inference import infer_expression_correspondences
 from invariant_cli.contracts.generation import InferenceLimits
 from invariant_cli.contracts.inference import infer_correspondences
@@ -23,7 +26,7 @@ from invariant_cli.contracts.validation import validate_candidate_contract
 from invariant_cli.execution.reader import load_execution_observations
 from invariant_cli.matching.model import EvidenceKind
 from invariant_cli.matching.static.model import FieldUsage
-from invariant_cli.matching.static.python_ast import extract_field_usage
+from invariant_cli.matching.static.python_ast import extract_field_usage, extract_function_flows
 from invariant_cli.workspace.model import WorkspacePaths
 from invariant_cli.workspace.service import (
     get_workspace_paths,
@@ -150,10 +153,17 @@ def infer_contract(
     )
 
     if source_code is not None and target_code is not None:
+        source_path = _python_path(source_code, label="source")
+        target_path = _python_path(target_code, label="target")
         candidates = enrich_with_static_usage(
             candidates,
-            _extract_python_usage(source_code, label="source"),
-            _extract_python_usage(target_code, label="target"),
+            _extract_python_usage(source_path, label="source"),
+            _extract_python_usage(target_path, label="target"),
+        )
+        candidates = enrich_with_static_data_flow(
+            candidates,
+            extract_function_flows(source_path),
+            extract_function_flows(target_path),
         )
 
     candidate_sets = build_candidate_sets(
@@ -163,7 +173,7 @@ def infer_contract(
     )
 
     contract = CandidateTranslationContract(
-        version=4,
+        version=5,
         paired_executions=pair_refs,
         correspondences=candidates,
         expression_correspondences=expression_candidates,
@@ -222,6 +232,12 @@ def infer_contract(
                 if isinstance(common_operations, list):
                     operations = ", ".join(str(operation) for operation in common_operations)
                     typer.echo(f"  static evidence: {operations}")
+            data_flow = next(
+                (e for e in candidate.evidence if e.kind == EvidenceKind.STATIC_DATA_FLOW),
+                None,
+            )
+            if data_flow:
+                typer.echo(f"  data-flow evidence: {data_flow.effect.value}")
             typer.echo("")
     if expression_candidates:
         for expression_candidate in expression_candidates:
@@ -256,15 +272,17 @@ def _parse_pair(
 
 
 def _extract_python_usage(path: Path, *, label: str) -> dict[str, FieldUsage]:
-    resolved = path.expanduser().resolve()
-
-    if not resolved.is_file():
-        raise typer.BadParameter(f"{label.capitalize()} code file not found: {path}")
-
     try:
-        return extract_field_usage(resolved)
+        return extract_field_usage(path)
     except (OSError, SyntaxError) as exc:
         raise typer.BadParameter(f"Could not analyze {label} code: {exc}") from exc
+
+
+def _python_path(path: Path, *, label: str) -> Path:
+    resolved = path.expanduser().resolve()
+    if not resolved.is_file():
+        raise typer.BadParameter(f"{label.capitalize()} code file not found: {path}")
+    return resolved
 
 
 def _resolve_workspace(

@@ -21,7 +21,15 @@ class EntityRef:
 class EvidenceKind(StrEnum):
     DYNAMIC_TRANSITION = "dynamic_transition"
     STATIC_USAGE = "static_usage"
+    STATIC_DATA_FLOW = "static_data_flow"
+    CALL_CONTEXT = "call_context"
     SCHEMA = "schema"
+
+
+class EvidenceEffect(StrEnum):
+    SUPPORTS = "supports"
+    CONTRADICTS = "contradicts"
+    NEUTRAL = "neutral"
 
 
 @dataclass(frozen=True)
@@ -29,3 +37,4 @@ class Evidence:
     kind: EvidenceKind
     producer: str
     attributes: dict[str, object] = field(default_factory=dict)
+    effect: EvidenceEffect = EvidenceEffect.SUPPORTS
