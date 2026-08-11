@@ -228,6 +228,8 @@ agent.md
 !experiments/one_to_many_demo/target/**
 !experiments/ambiguity_ranking_demo/target/
 !experiments/ambiguity_ranking_demo/target/**
+!experiments/interprocedural_demo/target/
+!experiments/interprocedural_demo/target/**
 
 # PyPI configuration file
 .pypirc
