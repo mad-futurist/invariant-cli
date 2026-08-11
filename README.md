@@ -195,10 +195,17 @@ uv run invariant contract infer \
   --target-code path/to/rewrite/
 ```
 
-Directory analysis builds a bounded `ProgramIndex`. A value passed to a uniquely resolved local
-function or method is linked to the corresponding parameter, and traversal continues until a field
-write, return, external call, dead end, or the call-depth limit. Unsupported or ambiguous constructs
-remain unresolved rather than being guessed.
+Code analysis now crosses a language-neutral `SemanticAnalyzer` boundary. The built-in Python AST
+adapter converts its internal `ProgramIndex` and `FunctionFlow` objects into a
+`ProgramSemanticModel` made of functions, state reads/writes, values, operations, calls, returns, and
+typed flow edges. Contract enrichment consumes this neutral model rather than importing the Python
+implementation directly.
+
+A value passed to an exactly resolved module-local function is linked to the corresponding parameter,
+and traversal continues until a state write, return, external call, dead end, or the call-depth limit.
+Suffix-only matches are recorded as `heuristic`, multiple suffix matches as `ambiguous`, and unknown
+calls as `external`. Only `exact` resolution may produce resolved supporting or contradicting program
+evidence; every other resolution remains neutral.
 
 Candidate generation is bounded before relation inference. The defaults consider at most 50
 schema-compatible direct targets and 100 same-scope numeric target pairs per source field. They can
@@ -219,20 +226,20 @@ JSON/SQLite transitions. It does not yet read declared JSON Schema or SQLite DDL
 
 Candidate contracts are saved under `.invariant/contracts/`.
 
-Every saved candidate also contains `evidence_graph` version 4. It is an inspectable graph, not a
+Every saved candidate also contains `evidence_graph` version 5. It is an inspectable graph, not a
 confidence score. Its nodes represent entities, proposed correspondences, relations, evidence items,
 expressions, candidate sets, and paired training executions. Edges say which entity or expression is the source or
 target, which entities form an expression, which relation a candidate uses, which evidence supports
 or contradicts it, which ranked alternatives belong to a source candidate set, and which execution pairs produced dynamic evidence. Stable content-based IDs make the graph
 deterministic even though the contract file itself receives a new UUID.
 
-Contract format v5 keeps ordinary field-to-field candidates under `correspondences`, expression
+Contract format v6 keeps ordinary field-to-field candidates under `correspondences`, expression
 hypotheses under `expression_correspondences`, and adds first-class `candidate_sets`. The flat lists
 remain the executable validation projection; each candidate set groups both shapes under one source,
 stores deterministic rank factors, and has one of these statuses:
 
 ```text
-confident_candidate
+well_supported_candidate
 ambiguous
 insufficient_evidence
 rejected
@@ -241,6 +248,13 @@ rejected
 Ranking is an explanation over evidence, not an automatic truth decision. Alternatives are preserved
 in the contract and Evidence Graph even when one candidate ranks higher. The first expression policy
 remains intentionally small:
+
+Every evidence item also declares a provenance family: `runtime`, `observed_schema`,
+`static_program`, or `declared_schema`. Status uses independent supporting families rather than raw
+evidence count. Static usage, local data flow, and call context all belong to `static_program`, so
+three signals from the same Python analyzer count as one family. The status
+`well_supported_candidate` requires at least two supporting families and does not claim calibrated
+confidence.
 
 The initial weights are intentionally simple and visible in every candidate's `factors`: dynamic
 evidence has a base of 100 plus bounded pair/transition contributions; compatible observed type adds
@@ -288,9 +302,8 @@ The `experiments/` directory contains intentionally small applications:
 - `dataflow_demo` contrasts a matching `read -> subtract -> persist` chain with a deliberately
   correlated target where the candidate field flows into an unresolved logging call, demonstrating
   conservative neutral evidence.
-- `interprocedural_demo` follows arguments across source files and into a target repository method;
-  its resolved positive, resolved negative, and unresolved-external variants exercise all three
-  evidence effects.
+- `interprocedural_demo` demonstrates that imported-function and receiver-method suffix matches are
+  retained as heuristic neutral evidence instead of creating false support or contradiction.
 
 These demos are test beds for one idea at a time. Experimental code stays outside the main package until its behavior and interface are understood.
 
@@ -304,15 +317,16 @@ Invariant does not yet understand a whole software system.
 - Relation inference supports exact and affine numeric transformations only.
 - Expression inference currently supports one source component and exactly two summed target components.
 - Candidate generation uses fixed configurable bounds; a bound that is too small can exclude a valid hypothesis and must be reported as an inference assumption.
-- Python program analysis is deliberately narrow. It resolves only unique local function/method
-  names and follows at most two calls. It does not resolve closures, decorators, reflection, dynamic
-  attributes, async behavior, inheritance, polymorphism, or general aliases/import semantics.
+- Python program analysis is deliberately narrow. It exactly resolves module-local functions and
+  follows at most two calls. Imported functions and receiver methods remain heuristic until import
+  and type resolution exists. It does not resolve closures, decorators, reflection, dynamic
+  attributes, async behavior, inheritance, polymorphism, or general aliases.
 - Return values do not yet flow back into callers, and calls are not classified as persistence,
   logging, or other semantic roles.
 - Static usage enriches existing dynamic candidates; it does not create correspondences by itself.
 - Observed schema evidence does not yet inspect declared JSON Schema, SQLite DDL, foreign keys, or indexes.
 - Candidate scores are deterministic ordering factors, not calibrated probabilities or confidence scores.
-- Evidence Graph v4 is embedded in saved artifacts and is not yet queryable through a CLI command.
+- Evidence Graph v5 is embedded in saved artifacts and is not yet queryable through a CLI command.
 - Dynamic evidence currently points to paired executions as a whole; it does not yet store individual observed-transition nodes.
 - There is no target-architecture model, implementation generator, or production gate system yet.
 
@@ -341,6 +355,7 @@ src/invariant_cli/
   capture/        probe lifecycle, raw records, and observation normalization
   observation/    filesystem snapshots and JSON/SQLite resource decoders
   comparison/     direct execution comparison
+  analysis/       language-neutral semantic IR and analyzer adapters
   matching/       entities, transitions, and evidence producers
   evidence/       Evidence Graph model and deterministic graph builders
   contracts/      inference, storage, enrichment, and validation
@@ -353,10 +368,10 @@ The long-term problem is larger than comparing two files or translating code lin
 
 > Which parts of two systems correspond, what relationship connects them, which behavior must remain stable, and does the new implementation belong in the target architecture?
 
-The contract model now handles pairwise and a first one-to-many relation, while Candidate Sets and
-Evidence Graph v4 make ambiguity, contradiction, and unresolved context inspectable without deleting
-alternatives. The next step is to stabilize function-level semantics—especially return flow and call
-roles—before functions and operations become correspondence entities alongside fields.
+The contract model now handles pairwise and a first one-to-many relation. Candidate Sets and
+Evidence Graph v5 keep ambiguity, contradictions, evidence families, and unresolved context visible
+without deleting alternatives. The next semantic milestone is return flow through the neutral IR,
+followed by explicit call roles and function-level correspondence.
 
 ## License
 

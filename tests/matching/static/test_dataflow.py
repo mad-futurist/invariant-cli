@@ -1,22 +1,22 @@
 from pathlib import Path
 
+from invariant_cli.analysis.model import ProgramSemanticModel
+from invariant_cli.analysis.python.analyzer import PythonSemanticAnalyzer
 from invariant_cli.matching.model import EntityKind, EntityRef, EvidenceEffect, EvidenceKind
 from invariant_cli.matching.static.matcher import (
     build_call_context_evidence,
     build_static_data_flow_evidence,
 )
-from invariant_cli.matching.static.model import FunctionFlow
-from invariant_cli.matching.static.python_ast import extract_function_flows
 
 
 def _entity(namespace: str, identifier: str) -> EntityRef:
     return EntityRef(EntityKind.JSON_FIELD, namespace, identifier)
 
 
-def _flows(tmp_path: Path, name: str, code: str) -> list[FunctionFlow]:
+def _flows(tmp_path: Path, name: str, code: str) -> ProgramSemanticModel:
     path = tmp_path / name
     path.write_text(code.strip(), encoding="utf-8")
-    return extract_function_flows(path)
+    return PythonSemanticAnalyzer().analyze(path)
 
 
 def test_compatible_computation_call_chains_support_candidate(tmp_path: Path) -> None:
@@ -40,11 +40,10 @@ def persist_balance(value):
 def process_payment(value):
     current = account["remaining_eur"]
     updated = current - value
-    repository.store(updated)
+    store(updated)
 
-class AccountRepository:
-    def store(self, amount):
-        account["remaining_eur"] = amount
+def store(amount):
+    account["remaining_eur"] = amount
 """,
     )
 
@@ -66,10 +65,10 @@ class AccountRepository:
     assert source_attributes["call_chain"] == ["pay", "persist_balance"]
     assert target_attributes["call_chain"] == [
         "process_payment",
-        "AccountRepository.store",
+        "store",
     ]
-    assert source_attributes["terminal_kind"] == "field_write"
-    assert target_attributes["terminal_kind"] == "field_write"
+    assert source_attributes["terminal_kind"] == "state_write"
+    assert target_attributes["terminal_kind"] == "state_write"
     assert source_attributes["resolution"] == "resolved"
     assert target_attributes["resolution"] == "resolved"
 
@@ -81,8 +80,8 @@ class AccountRepository:
     )
     assert context is not None
     assert context.effect == EvidenceEffect.SUPPORTS
-    assert context.attributes["source_terminal"] == "field_write"
-    assert context.attributes["target_terminal"] == "field_write"
+    assert context.attributes["source_terminal"] == "state_write"
+    assert context.attributes["target_terminal"] == "state_write"
 
 
 def test_disconnected_target_field_contradicts_candidate(tmp_path: Path) -> None:
@@ -106,11 +105,10 @@ def persist_balance(value):
 def process_payment(value, unrelated_total):
     current = account["remaining_eur"]
     updated = unrelated_total - value
-    repository.store(updated)
+    store(updated)
 
-class AccountRepository:
-    def store(self, amount):
-        account["remaining_eur"] = amount
+def store(amount):
+    account["remaining_eur"] = amount
 """,
     )
 

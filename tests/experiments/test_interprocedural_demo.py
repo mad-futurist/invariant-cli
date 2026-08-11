@@ -36,9 +36,9 @@ def _capture(demo: Path, app_path: str, amount: str) -> str:
 @pytest.mark.parametrize(
     ("target", "effect", "status"),
     [
-        ("target", "supports", "confident_candidate"),
-        ("target_negative", "contradicts", "rejected"),
-        ("target_unresolved", "neutral", "confident_candidate"),
+        ("target", "neutral", "well_supported_candidate"),
+        ("target_negative", "neutral", "well_supported_candidate"),
+        ("target_unresolved", "neutral", "well_supported_candidate"),
     ],
 )
 def test_interprocedural_program_context(

@@ -5,7 +5,7 @@ from invariant_cli.contracts.model import (
     ExpressionKind,
 )
 from invariant_cli.contracts.relations import infer_relation, to_decimal
-from invariant_cli.matching.model import Evidence, EvidenceKind
+from invariant_cli.matching.model import Evidence, EvidenceFamily, EvidenceKind
 from invariant_cli.matching.schema.model import SchemaProfile
 from invariant_cli.matching.schema.observed import build_schema_evidence, profile_observed_field
 from invariant_cli.matching.transition import (
@@ -81,6 +81,7 @@ def infer_expression_correspondences(
                         Evidence(
                             kind=EvidenceKind.DYNAMIC_TRANSITION,
                             producer=PRODUCER,
+                            family=EvidenceFamily.RUNTIME,
                             attributes={
                                 "matched_pairs": len(pairs),
                                 "total_pairs": len(pairs),

@@ -3,7 +3,13 @@ from collections.abc import Iterable
 from decimal import Decimal
 from typing import Any
 
-from invariant_cli.matching.model import EntityKind, EntityRef, Evidence, EvidenceKind
+from invariant_cli.matching.model import (
+    EntityKind,
+    EntityRef,
+    Evidence,
+    EvidenceFamily,
+    EvidenceKind,
+)
 from invariant_cli.matching.schema.model import SchemaProfile, ValueType
 from invariant_cli.matching.transition import ObservationKey, ObservedTransition
 from invariant_cli.observation.model import ABSENT
@@ -88,6 +94,7 @@ def build_schema_evidence(
     return Evidence(
         kind=EvidenceKind.SCHEMA,
         producer=PRODUCER,
+        family=EvidenceFamily.OBSERVED_SCHEMA,
         attributes={
             "source_type": source.value_type.value,
             "target_type": target_type,

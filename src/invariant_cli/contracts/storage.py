@@ -35,6 +35,7 @@ from invariant_cli.matching.model import (
     EntityRef,
     Evidence,
     EvidenceEffect,
+    EvidenceFamily,
     EvidenceKind,
 )
 from invariant_cli.matching.transition import ObservedTransition
@@ -87,6 +88,7 @@ def save_candidate_contract(
                     {
                         "kind": ev.kind.value,
                         "producer": ev.producer,
+                        "family": ev.family.value,
                         "effect": ev.effect.value,
                         "attributes": ev.attributes,
                     }
@@ -108,6 +110,7 @@ def save_candidate_contract(
                     {
                         "kind": item.kind.value,
                         "producer": item.producer,
+                        "family": item.family.value,
                         "effect": item.effect.value,
                         "attributes": item.attributes,
                     }
@@ -178,6 +181,7 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
                     Evidence(
                         kind=EvidenceKind(ev["kind"]),
                         producer=ev["producer"],
+                        family=_evidence_family(ev),
                         attributes=ev.get("attributes", {}),
                         effect=EvidenceEffect(ev.get("effect", "supports")),
                     )
@@ -202,6 +206,7 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
                     Evidence(
                         kind=EvidenceKind(item["kind"]),
                         producer=item["producer"],
+                        family=_evidence_family(item),
                         attributes=item.get("attributes", {}),
                         effect=EvidenceEffect(item.get("effect", "supports")),
                     )
@@ -242,7 +247,7 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
         candidate_sets.append(
             CandidateSet(
                 source=_load_entity(entry["source"]),
-                status=CandidateSetStatus(entry["status"]),
+                status=_candidate_set_status(str(entry["status"])),
                 candidates=ranked_candidates,
             )
         )
@@ -333,6 +338,25 @@ def save_contract_validation(
     )
 
     return output_path
+
+
+def _evidence_family(data: dict[str, object]) -> EvidenceFamily:
+    raw_family = data.get("family")
+    if raw_family is not None:
+        return EvidenceFamily(str(raw_family))
+
+    kind = EvidenceKind(str(data["kind"]))
+    if kind == EvidenceKind.DYNAMIC_TRANSITION:
+        return EvidenceFamily.RUNTIME
+    if kind == EvidenceKind.SCHEMA:
+        return EvidenceFamily.OBSERVED_SCHEMA
+    return EvidenceFamily.STATIC_PROGRAM
+
+
+def _candidate_set_status(value: str) -> CandidateSetStatus:
+    if value == "confident_candidate":
+        return CandidateSetStatus.WELL_SUPPORTED_CANDIDATE
+    return CandidateSetStatus(value)
 
 
 def _entity_to_data(entity: EntityRef) -> dict[str, str]:

@@ -5,7 +5,12 @@ from invariant_cli.contracts.enrichment import enrich_with_static_usage
 from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import CandidateSetStatus, CorrespondenceCandidate
 from invariant_cli.contracts.ranking import build_candidate_sets
-from invariant_cli.matching.model import Evidence, EvidenceEffect, EvidenceKind
+from invariant_cli.matching.model import (
+    Evidence,
+    EvidenceEffect,
+    EvidenceFamily,
+    EvidenceKind,
+)
 from invariant_cli.matching.static.model import FieldUsage, UsageOperation
 from invariant_cli.observation.model import Observation, ValueChange
 
@@ -64,7 +69,7 @@ def test_static_evidence_deterministically_ranks_without_dropping_alternative() 
     )
 
     candidate_set = build_candidate_sets(candidates, [])[0]
-    assert candidate_set.status == CandidateSetStatus.CONFIDENT_CANDIDATE
+    assert candidate_set.status == CandidateSetStatus.WELL_SUPPORTED_CANDIDATE
     assert len(candidate_set.candidates) == 2
     first = cast(CorrespondenceCandidate, candidate_set.candidates[0].candidate)
     second = cast(CorrespondenceCandidate, candidate_set.candidates[1].candidate)
@@ -100,6 +105,7 @@ def test_contradicting_evidence_rejects_candidate_without_dropping_it() -> None:
             Evidence(
                 kind=EvidenceKind.STATIC_DATA_FLOW,
                 producer="python-dataflow-v1",
+                family=EvidenceFamily.STATIC_PROGRAM,
                 effect=EvidenceEffect.CONTRADICTS,
             ),
         ],
@@ -109,3 +115,26 @@ def test_contradicting_evidence_rejects_candidate_without_dropping_it() -> None:
 
     assert candidate_set.status == CandidateSetStatus.REJECTED
     assert [ranked.candidate for ranked in candidate_set.candidates] == [contradicted]
+
+
+def test_multiple_static_signals_count_as_one_evidence_family() -> None:
+    candidate = infer_correspondences(_pairs())[0]
+    static_only = replace(
+        candidate,
+        evidence=[
+            Evidence(
+                kind=kind,
+                producer=producer,
+                family=EvidenceFamily.STATIC_PROGRAM,
+            )
+            for kind, producer in [
+                (EvidenceKind.STATIC_USAGE, "python-ast-v1"),
+                (EvidenceKind.STATIC_DATA_FLOW, "python-dataflow-v1"),
+                (EvidenceKind.CALL_CONTEXT, "python-call-context-v1"),
+            ]
+        ],
+    )
+
+    candidate_set = build_candidate_sets([static_only], [])[0]
+
+    assert candidate_set.status == CandidateSetStatus.INSUFFICIENT_EVIDENCE

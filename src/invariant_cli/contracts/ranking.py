@@ -126,7 +126,7 @@ def _rank_set(
     elif top_supports < 2:
         status = CandidateSetStatus.INSUFFICIENT_EVIDENCE
     else:
-        status = CandidateSetStatus.CONFIDENT_CANDIDATE
+        status = CandidateSetStatus.WELL_SUPPORTED_CANDIDATE
 
     return CandidateSet(source=source, status=status, candidates=ranked)
 
@@ -197,12 +197,8 @@ def _evidence(evidence: list[Evidence], kind: EvidenceKind) -> Evidence | None:
 
 
 def _effect_counts(evidence: list[Evidence]) -> tuple[int, int]:
-    supports = {
-        (item.kind, item.producer) for item in evidence if item.effect == EvidenceEffect.SUPPORTS
-    }
-    contradicts = {
-        (item.kind, item.producer) for item in evidence if item.effect == EvidenceEffect.CONTRADICTS
-    }
+    supports = {item.family for item in evidence if item.effect == EvidenceEffect.SUPPORTS}
+    contradicts = {item.family for item in evidence if item.effect == EvidenceEffect.CONTRADICTS}
     return len(supports), len(contradicts)
 
 

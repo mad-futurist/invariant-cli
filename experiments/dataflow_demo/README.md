@@ -4,7 +4,8 @@ This vertical slice keeps the runtime relation identical in both target programs
 
 `state.json#balance_cents * 0.01 = account.json#remaining_eur`
 
-The source and positive target also share a behavioral shape despite different names:
+The source and positive target use module-local functions and share a resolved behavioral shape
+despite different names:
 
 `field read -> subtract -> persistence call`
 

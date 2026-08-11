@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from invariant_cli.matching.model import EntityRef, Evidence, EvidenceEffect, EvidenceKind
+from invariant_cli.analysis.model import (
+    CallResolutionKind,
+    ProgramSemanticModel,
+    ResolutionStatus,
+    SemanticTerminalKind,
+)
+from invariant_cli.matching.model import (
+    EntityRef,
+    Evidence,
+    EvidenceEffect,
+    EvidenceFamily,
+    EvidenceKind,
+)
 from invariant_cli.matching.static.dataflow import (
     FieldFlowTrace,
     is_behavior_chain,
@@ -10,13 +22,7 @@ from invariant_cli.matching.static.dataflow import (
     trace_field_flows,
     traces_compatible,
 )
-from invariant_cli.matching.static.model import (
-    AnalysisResolution,
-    FieldUsage,
-    FlowTerminalKind,
-    FunctionFlow,
-)
-from invariant_cli.matching.static.program import ProgramIndex
+from invariant_cli.matching.static.model import FieldUsage
 
 PRODUCER = "python-ast-v1"
 DATA_FLOW_PRODUCER = "python-dataflow-v1"
@@ -42,6 +48,7 @@ def build_static_usage_evidence(source: FieldUsage, target: FieldUsage) -> Evide
     return Evidence(
         kind=EvidenceKind.STATIC_USAGE,
         producer=PRODUCER,
+        family=EvidenceFamily.STATIC_PROGRAM,
         attributes=compare_usage(source, target),
     )
 
@@ -49,8 +56,8 @@ def build_static_usage_evidence(source: FieldUsage, target: FieldUsage) -> Evide
 def build_static_data_flow_evidence(
     source_entity: EntityRef,
     target_entity: EntityRef,
-    source_program: ProgramIndex | list[FunctionFlow],
-    target_program: ProgramIndex | list[FunctionFlow],
+    source_program: ProgramSemanticModel,
+    target_program: ProgramSemanticModel,
 ) -> Evidence | None:
     match = _match_field_traces(
         source_entity,
@@ -65,6 +72,7 @@ def build_static_data_flow_evidence(
     return Evidence(
         kind=EvidenceKind.STATIC_DATA_FLOW,
         producer=DATA_FLOW_PRODUCER,
+        family=EvidenceFamily.STATIC_PROGRAM,
         effect=effect,
         attributes={
             "source": _trace_attributes(source_entity, source_trace),
@@ -77,8 +85,8 @@ def build_static_data_flow_evidence(
 def build_call_context_evidence(
     source_entity: EntityRef,
     target_entity: EntityRef,
-    source_program: ProgramIndex | list[FunctionFlow],
-    target_program: ProgramIndex | list[FunctionFlow],
+    source_program: ProgramSemanticModel,
+    target_program: ProgramSemanticModel,
 ) -> Evidence | None:
     match = _match_field_traces(
         source_entity,
@@ -93,6 +101,7 @@ def build_call_context_evidence(
     return Evidence(
         kind=EvidenceKind.CALL_CONTEXT,
         producer=CALL_CONTEXT_PRODUCER,
+        family=EvidenceFamily.STATIC_PROGRAM,
         effect=effect,
         attributes={
             "source_call_chain": list(source_trace.call_chain),
@@ -109,8 +118,8 @@ def build_call_context_evidence(
 def _match_field_traces(
     source_entity: EntityRef,
     target_entity: EntityRef,
-    source_program: ProgramIndex | list[FunctionFlow],
-    target_program: ProgramIndex | list[FunctionFlow],
+    source_program: ProgramSemanticModel,
+    target_program: ProgramSemanticModel,
     *,
     compatible: Callable[[FieldFlowTrace, FieldFlowTrace], bool],
 ) -> tuple[EvidenceEffect, FieldFlowTrace, FieldFlowTrace, str] | None:
@@ -146,22 +155,31 @@ def _match_field_traces(
     unresolved = [
         trace
         for trace in [*source_traces, *target_traces]
-        if trace.resolution != AnalysisResolution.RESOLVED
+        if trace.resolution != ResolutionStatus.RESOLVED
     ]
     if unresolved:
         unresolved_trace = strongest_trace(unresolved)
         source_trace = _preferred_trace(source_traces, source_chain)
         target_trace = _preferred_trace(target_traces, unresolved_trace)
-        resolution = (
-            unresolved_trace.resolution
-            if unresolved_trace is not None
-            else AnalysisResolution.UNRESOLVED
-        )
-        if resolution == AnalysisResolution.DEPTH_LIMIT:
+        if (
+            unresolved_trace is not None
+            and unresolved_trace.resolution == ResolutionStatus.PARTIAL
+            and unresolved_trace.call_resolution == CallResolutionKind.EXACT
+        ):
             reason = "call_depth_limit_reached"
         elif (
             unresolved_trace is not None
-            and unresolved_trace.terminal_kind == FlowTerminalKind.EXTERNAL_CALL
+            and unresolved_trace.call_resolution == CallResolutionKind.HEURISTIC
+        ):
+            reason = "heuristic_call_resolution"
+        elif (
+            unresolved_trace is not None
+            and unresolved_trace.call_resolution == CallResolutionKind.AMBIGUOUS
+        ):
+            reason = "ambiguous_call_resolution"
+        elif (
+            unresolved_trace is not None
+            and unresolved_trace.terminal_kind == SemanticTerminalKind.EXTERNAL_CALL
         ):
             reason = "unresolved_external_call"
         else:
@@ -184,7 +202,7 @@ def _preferred_trace(
     fallback: FieldFlowTrace | None,
 ) -> FieldFlowTrace:
     unresolved = strongest_trace(
-        [trace for trace in traces if trace.resolution != AnalysisResolution.RESOLVED]
+        [trace for trace in traces if trace.resolution != ResolutionStatus.RESOLVED]
     )
     selected = unresolved or fallback or strongest_trace(traces)
     if selected is None:
@@ -194,8 +212,8 @@ def _preferred_trace(
 
 def _local_data_flow_compatible(source: FieldFlowTrace, target: FieldFlowTrace) -> bool:
     return (
-        source.resolution == AnalysisResolution.RESOLVED
-        and target.resolution == AnalysisResolution.RESOLVED
+        source.resolution == ResolutionStatus.RESOLVED
+        and target.resolution == ResolutionStatus.RESOLVED
         and is_behavior_chain(source)
         and is_behavior_chain(target)
         and source.operations == target.operations
@@ -212,4 +230,5 @@ def _trace_attributes(entity: EntityRef, trace: FieldFlowTrace) -> dict[str, obj
         "terminal_kind": trace.terminal_kind.value,
         "terminal": trace.terminal,
         "resolution": trace.resolution.value,
+        "call_resolution": (None if trace.call_resolution is None else trace.call_resolution.value),
     }

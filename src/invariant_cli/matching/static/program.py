@@ -3,28 +3,47 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from invariant_cli.analysis.model import CallResolutionKind
 from invariant_cli.matching.static.model import FieldUsage, FunctionFlow, UsageOperation
 from invariant_cli.matching.static.python_ast import extract_field_usage, extract_function_flows
+
+
+@dataclass(frozen=True)
+class CallResolution:
+    kind: CallResolutionKind
+    target: FunctionFlow | None = None
+    candidates: tuple[FunctionFlow, ...] = ()
 
 
 @dataclass(frozen=True)
 class ProgramIndex:
     functions: dict[str, FunctionFlow]
 
-    def resolve(self, call: str) -> FunctionFlow | None:
+    def resolve(self, call: str, *, caller_module: str | None = None) -> CallResolution:
         exact = self.functions.get(call)
         if exact is not None:
-            return exact
+            return CallResolution(CallResolutionKind.EXACT, target=exact, candidates=(exact,))
+
+        if caller_module is not None:
+            local = self.functions.get(f"{caller_module}.{call}")
+            if local is not None:
+                return CallResolution(CallResolutionKind.EXACT, target=local, candidates=(local,))
 
         suffix = call.rsplit(".", 1)[-1]
-        matches = {
-            _function_key(flow): flow
+        matches = tuple(
+            flow
             for flow in self.functions.values()
             if flow.function.name.rsplit(".", 1)[-1] == suffix
-        }
+        )
         if len(matches) == 1:
-            return next(iter(matches.values()))
-        return None
+            return CallResolution(
+                CallResolutionKind.HEURISTIC,
+                target=matches[0],
+                candidates=matches,
+            )
+        if matches:
+            return CallResolution(CallResolutionKind.AMBIGUOUS, candidates=matches)
+        return CallResolution(CallResolutionKind.EXTERNAL)
 
     @classmethod
     def from_flows(cls, flows: list[FunctionFlow]) -> ProgramIndex:

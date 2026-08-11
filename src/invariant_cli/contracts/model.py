@@ -20,7 +20,7 @@ class CandidateShape(StrEnum):
 
 
 class CandidateSetStatus(StrEnum):
-    CONFIDENT_CANDIDATE = "confident_candidate"
+    WELL_SUPPORTED_CANDIDATE = "well_supported_candidate"
     AMBIGUOUS = "ambiguous"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     REJECTED = "rejected"

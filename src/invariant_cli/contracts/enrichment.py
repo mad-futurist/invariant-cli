@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+from invariant_cli.analysis.model import ProgramSemanticModel
 from invariant_cli.contracts.model import CorrespondenceCandidate
 from invariant_cli.matching.model import EntityKind, EvidenceKind
 from invariant_cli.matching.static.matcher import (
@@ -10,8 +11,7 @@ from invariant_cli.matching.static.matcher import (
     build_static_data_flow_evidence,
     build_static_usage_evidence,
 )
-from invariant_cli.matching.static.model import FieldUsage, FunctionFlow
-from invariant_cli.matching.static.program import ProgramIndex
+from invariant_cli.matching.static.model import FieldUsage
 
 
 def enrich_with_static_usage(
@@ -56,8 +56,8 @@ def enrich_with_static_usage(
 
 def enrich_with_static_data_flow(
     candidates: list[CorrespondenceCandidate],
-    source_flows: ProgramIndex | list[FunctionFlow],
-    target_flows: ProgramIndex | list[FunctionFlow],
+    source_flows: ProgramSemanticModel,
+    target_flows: ProgramSemanticModel,
 ) -> list[CorrespondenceCandidate]:
     enriched: list[CorrespondenceCandidate] = []
 

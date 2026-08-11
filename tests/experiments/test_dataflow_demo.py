@@ -38,8 +38,8 @@ def _capture(demo: Path, app_path: str, amount: str) -> str:
 @pytest.mark.parametrize(
     ("target", "effect", "status", "edge_kind"),
     [
-        ("target_positive", "supports", "confident_candidate", "supports"),
-        ("target_negative", "neutral", "confident_candidate", "neutral"),
+        ("target_positive", "supports", "well_supported_candidate", "supports"),
+        ("target_negative", "neutral", "well_supported_candidate", "neutral"),
     ],
 )
 def test_dataflow_demo_distinguishes_connected_and_accidental_candidates(

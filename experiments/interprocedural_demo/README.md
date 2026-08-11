@@ -8,14 +8,18 @@ All variants preserve the same small-sample runtime relation:
 
 `state.json#balance_cents * 0.01 = account.json#remaining_eur`
 
-The program evidence distinguishes them:
+The Python adapter can see all three possible callees, but it cannot yet prove imported-function or
+receiver-type identity. The unique suffix matches are therefore recorded as `heuristic`, and all
+three variants conservatively produce neutral call-context evidence:
 
-- `target`: the candidate field reaches `subtract -> local method -> field write`, so call context
-  supports the candidate;
-- `target_negative`: the candidate field reaches a proven dead end while `unrelated_total` reaches
-  the repository, so call context contradicts the candidate;
-- `target_unresolved`: the candidate field reaches the unknown external call `logger.info`, so call
-  context is neutral rather than contradictory.
+- `target` would be compatible if the receiver were resolved, but heuristic resolution cannot
+  support it;
+- `target_negative` would be incompatible if the imported source call were resolved, but an
+  unresolved source path cannot prove contradiction;
+- `target_unresolved` also reaches the unknown external call `logger.info`.
+
+This experiment protects the safety rule: suffix-only call matching must never produce false
+`SUPPORTS` or `CONTRADICTS`.
 
 The full capture and inference workflows are tested by
 `tests/experiments/test_interprocedural_demo.py`.

@@ -100,6 +100,7 @@ def test_static_usage_demo_end_to_end(tmp_path: Path, monkeypatch: MonkeyPatch) 
     assert static_evidence == {
         "kind": "static_usage",
         "producer": "python-ast-v1",
+        "family": "static_program",
         "effect": "supports",
         "attributes": {
             "source_operations": ["read", "subtract", "write"],

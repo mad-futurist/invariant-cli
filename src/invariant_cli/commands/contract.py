@@ -2,6 +2,8 @@ from pathlib import Path
 
 import typer
 
+from invariant_cli.analysis.model import ProgramSemanticModel
+from invariant_cli.analysis.service import analyze_program
 from invariant_cli.contracts.enrichment import (
     enrich_with_static_data_flow,
     enrich_with_static_usage,
@@ -25,12 +27,7 @@ from invariant_cli.contracts.storage import (
 from invariant_cli.contracts.validation import validate_candidate_contract
 from invariant_cli.execution.reader import load_execution_observations
 from invariant_cli.matching.model import EvidenceKind
-from invariant_cli.matching.static.model import FieldUsage
-from invariant_cli.matching.static.program import (
-    ProgramIndex,
-    build_program_index,
-    extract_program_usage,
-)
+from invariant_cli.matching.static.semantic import extract_semantic_usage
 from invariant_cli.workspace.model import WorkspacePaths
 from invariant_cli.workspace.service import (
     get_workspace_paths,
@@ -159,15 +156,17 @@ def infer_contract(
     if source_code is not None and target_code is not None:
         source_path = _python_path(source_code, label="source")
         target_path = _python_path(target_code, label="target")
+        source_program = _extract_program(source_path, label="source")
+        target_program = _extract_program(target_path, label="target")
         candidates = enrich_with_static_usage(
             candidates,
-            _extract_python_usage(source_path, label="source"),
-            _extract_python_usage(target_path, label="target"),
+            extract_semantic_usage(source_program),
+            extract_semantic_usage(target_program),
         )
         candidates = enrich_with_static_data_flow(
             candidates,
-            _extract_program(source_path, label="source"),
-            _extract_program(target_path, label="target"),
+            source_program,
+            target_program,
         )
 
     candidate_sets = build_candidate_sets(
@@ -177,7 +176,7 @@ def infer_contract(
     )
 
     contract = CandidateTranslationContract(
-        version=5,
+        version=6,
         paired_executions=pair_refs,
         correspondences=candidates,
         expression_correspondences=expression_candidates,
@@ -281,16 +280,9 @@ def _parse_pair(
     )
 
 
-def _extract_python_usage(path: Path, *, label: str) -> dict[str, FieldUsage]:
+def _extract_program(path: Path, *, label: str) -> ProgramSemanticModel:
     try:
-        return extract_program_usage(path)
-    except (OSError, SyntaxError) as exc:
-        raise typer.BadParameter(f"Could not analyze {label} code: {exc}") from exc
-
-
-def _extract_program(path: Path, *, label: str) -> ProgramIndex:
-    try:
-        return build_program_index(path)
+        return analyze_program(path)
     except (OSError, SyntaxError) as exc:
         raise typer.BadParameter(f"Could not analyze {label} code: {exc}") from exc
 

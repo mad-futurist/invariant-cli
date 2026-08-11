@@ -76,6 +76,7 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                 attributes={
                     "kind": item.kind.value,
                     "producer": item.producer,
+                    "family": item.family.value,
                     "effect": item.effect.value,
                     **item.attributes,
                 },
@@ -128,6 +129,7 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                 attributes={
                     "kind": item.kind.value,
                     "producer": item.producer,
+                    "family": item.family.value,
                     "effect": item.effect.value,
                     **item.attributes,
                 },
@@ -168,7 +170,7 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                 )
             )
 
-    return _graph(nodes, edges, version=4 if contract.candidate_sets else 3)
+    return _graph(nodes, edges, version=5 if contract.candidate_sets else 3)
 
 
 def build_validation_evidence_graph(

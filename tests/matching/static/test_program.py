@@ -1,11 +1,17 @@
 from pathlib import Path
 
+from invariant_cli.analysis.model import (
+    CallResolutionKind,
+    ResolutionStatus,
+    SemanticTerminalKind,
+)
 from invariant_cli.matching.static.dataflow import trace_field_flows
-from invariant_cli.matching.static.model import AnalysisResolution, FlowTerminalKind
 from invariant_cli.matching.static.program import build_program_index, python_files
 
 
-def test_indexes_tree_and_resolves_cross_file_function_and_method(tmp_path: Path) -> None:
+def test_unique_suffix_resolution_is_heuristic_and_cannot_be_resolved_trace(
+    tmp_path: Path,
+) -> None:
     (tmp_path / "service.py").write_text(
         """
 def pay(state, amount):
@@ -34,8 +40,8 @@ class AccountRepository:
         "repository.persist_balance",
         "service.pay",
     ]
-    assert program.resolve("persist_balance") is not None
-    assert program.resolve("repository.store") is not None
+    assert program.resolve("persist_balance").kind == CallResolutionKind.HEURISTIC
+    assert program.resolve("repository.store").kind == CallResolutionKind.HEURISTIC
     trace = next(
         item
         for item in trace_field_flows(program, "balance_cents")
@@ -43,8 +49,9 @@ class AccountRepository:
     )
     assert trace.operations == ("subtract",)
     assert trace.call_chain == ("pay", "persist_balance")
-    assert trace.terminal_kind == FlowTerminalKind.FIELD_WRITE
-    assert trace.resolution == AnalysisResolution.RESOLVED
+    assert trace.terminal_kind == SemanticTerminalKind.EXTERNAL_CALL
+    assert trace.resolution == ResolutionStatus.PARTIAL
+    assert trace.call_resolution == CallResolutionKind.HEURISTIC
 
 
 def test_depth_limit_is_explicit(tmp_path: Path) -> None:
@@ -70,7 +77,7 @@ def second(value):
         if item.function == "chain.start"
     )
 
-    assert trace.resolution == AnalysisResolution.DEPTH_LIMIT
+    assert trace.resolution == ResolutionStatus.PARTIAL
     assert trace.call_chain == ("start", "first", "second")
 
 

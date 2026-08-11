@@ -13,6 +13,7 @@ from invariant_cli.matching.model import (
     EntityKind,
     EntityRef,
     Evidence,
+    EvidenceFamily,
     EvidenceKind,
 )
 from invariant_cli.observation.model import (
@@ -74,6 +75,7 @@ def contract() -> CandidateTranslationContract:
                     Evidence(
                         kind=EvidenceKind.DYNAMIC_TRANSITION,
                         producer="dynamic-transition-v1",
+                        family=EvidenceFamily.RUNTIME,
                         attributes={
                             "matched_pairs": 3,
                             "total_pairs": 3,

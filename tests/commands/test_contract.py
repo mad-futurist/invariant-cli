@@ -134,7 +134,7 @@ def test_contract_infer_command(tmp_path: Path) -> None:
 
         data = yaml.safe_load(files[0].read_text(encoding="utf-8"))
 
-        assert data["version"] == 5
+        assert data["version"] == 6
         assert data["status"] == "candidate"
 
         assert len(data["paired_executions"]) == 3
@@ -179,6 +179,7 @@ def test_contract_infer_command(tmp_path: Path) -> None:
         assert static == {
             "kind": "static_usage",
             "producer": "python-ast-v1",
+            "family": "static_program",
             "effect": "supports",
             "attributes": {
                 "source_operations": ["read", "subtract", "write"],
@@ -187,9 +188,9 @@ def test_contract_infer_command(tmp_path: Path) -> None:
             },
         }
 
-        assert data["candidate_sets"][0]["status"] == "confident_candidate"
+        assert data["candidate_sets"][0]["status"] == "well_supported_candidate"
         assert data["candidate_sets"][0]["candidates"][0]["rank"] == 1
-        assert data["evidence_graph"]["version"] == 4
+        assert data["evidence_graph"]["version"] == 5
 
     finally:
         os.chdir(original_cwd)

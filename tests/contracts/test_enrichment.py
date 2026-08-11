@@ -1,6 +1,12 @@
 from invariant_cli.contracts.enrichment import enrich_with_static_usage
 from invariant_cli.contracts.model import CorrespondenceCandidate, Relation, RelationKind
-from invariant_cli.matching.model import EntityKind, EntityRef, Evidence, EvidenceKind
+from invariant_cli.matching.model import (
+    EntityKind,
+    EntityRef,
+    Evidence,
+    EvidenceFamily,
+    EvidenceKind,
+)
 from invariant_cli.matching.static.model import FieldUsage, UsageOperation
 
 
@@ -24,6 +30,7 @@ def candidate() -> CorrespondenceCandidate:
             Evidence(
                 kind=EvidenceKind.DYNAMIC_TRANSITION,
                 producer="dynamic-transition-v1",
+                family=EvidenceFamily.RUNTIME,
             )
         ],
     )

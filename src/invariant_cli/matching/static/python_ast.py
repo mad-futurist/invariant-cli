@@ -54,21 +54,47 @@ def extract_function_flows(path: Path, *, module: str | None = None) -> list[Fun
     return flows
 
 
+def extract_module_flow(path: Path, *, module: str | None = None) -> FunctionFlow:
+    tree = ast.parse(
+        path.read_text(encoding="utf-8"),
+        filename=str(path),
+    )
+    executable_body = [
+        statement
+        for statement in tree.body
+        if not isinstance(
+            statement,
+            (ast.ClassDef, ast.FunctionDef, ast.Import, ast.ImportFrom),
+        )
+    ]
+    return _FunctionFlowBuilder(
+        module or path.stem,
+        "<module>",
+        executable_body,
+        parameters=(),
+    ).build()
+
+
 class _FunctionFlowBuilder:
     def __init__(
         self,
         module: str,
         function_name: str,
-        function: ast.FunctionDef,
+        function: ast.FunctionDef | list[ast.stmt],
         *,
-        is_method: bool,
+        is_method: bool = False,
+        parameters: tuple[str, ...] | None = None,
     ) -> None:
         self.function = FunctionRef(module=module, name=function_name)
-        self.body = function.body
-        parameters = [*function.args.posonlyargs, *function.args.args]
-        if is_method and parameters and parameters[0].arg in {"self", "cls"}:
-            parameters = parameters[1:]
-        self.parameters = tuple(parameter.arg for parameter in parameters)
+        if isinstance(function, list):
+            self.body = function
+            self.parameters = parameters or ()
+        else:
+            self.body = function.body
+            function_parameters = [*function.args.posonlyargs, *function.args.args]
+            if is_method and function_parameters and function_parameters[0].arg in {"self", "cls"}:
+                function_parameters = function_parameters[1:]
+            self.parameters = tuple(parameter.arg for parameter in function_parameters)
         self.nodes: list[FlowNode] = []
         self.edges: list[FlowEdge] = []
         self.definitions: dict[str, str] = {}

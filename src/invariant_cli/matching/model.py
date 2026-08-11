@@ -32,9 +32,17 @@ class EvidenceEffect(StrEnum):
     NEUTRAL = "neutral"
 
 
+class EvidenceFamily(StrEnum):
+    RUNTIME = "runtime"
+    OBSERVED_SCHEMA = "observed_schema"
+    STATIC_PROGRAM = "static_program"
+    DECLARED_SCHEMA = "declared_schema"
+
+
 @dataclass(frozen=True)
 class Evidence:
     kind: EvidenceKind
     producer: str
+    family: EvidenceFamily
     attributes: dict[str, object] = field(default_factory=dict)
     effect: EvidenceEffect = EvidenceEffect.SUPPORTS
