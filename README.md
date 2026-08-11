@@ -74,6 +74,7 @@ Invariant can:
 - infer a controlled one-to-many relation from one source field to the sum of two target fields;
 - add simple Python AST usage evidence to dynamic candidates;
 - build bounded local def-use graphs and compare field-to-computation-to-call behavior;
+- continue argument flow through uniquely resolved local functions and methods, up to two calls;
 - distinguish supporting, contradicting, and neutral evidence;
 - block type-incompatible field pairs and bound direct and expression candidate generation;
 - attach observed JSON/SQLite schema evidence to surviving hypotheses;
@@ -182,8 +183,22 @@ uv run invariant contract infer \
 
 `--source-code` and `--target-code` must be used together. The static analyser recognizes
 string-literal dictionary access such as `state["balance"]`. For undecorated, synchronous,
-module-level functions it also follows simple local assignments, arithmetic operations, call
-arguments, and field writes. Unsupported constructs remain unresolved rather than being guessed.
+module-level functions and methods it also follows simple local assignments, arithmetic operations,
+call arguments, and field writes. Either option can point to one file or a directory tree:
+
+```bash
+uv run invariant contract infer \
+  --pair SOURCE_1:TARGET_1 \
+  --pair SOURCE_2:TARGET_2 \
+  --pair SOURCE_3:TARGET_3 \
+  --source-code path/to/legacy/ \
+  --target-code path/to/rewrite/
+```
+
+Directory analysis builds a bounded `ProgramIndex`. A value passed to a uniquely resolved local
+function or method is linked to the corresponding parameter, and traversal continues until a field
+write, return, external call, dead end, or the call-depth limit. Unsupported or ambiguous constructs
+remain unresolved rather than being guessed.
 
 Candidate generation is bounded before relation inference. The defaults consider at most 50
 schema-compatible direct targets and 100 same-scope numeric target pairs per source field. They can
@@ -235,6 +250,8 @@ distance of at most 5 produces `ambiguous`. These are deterministic ordering rul
 not learned weights or calibrated probabilities. Evidence effects are evaluated separately from
 those scores: an uncontradicted candidate ranks ahead of a contradicted one, and a set whose best
 remaining candidate is contradicted is `rejected` without deleting the hypothesis or its evidence.
+`CONTRADICTS` is reserved for two fully resolved incompatible chains. Unknown external calls,
+ambiguous resolution, and depth-limit exits produce `NEUTRAL`; unknown is never treated as false.
 
 ```text
 identity(source_field) -> sum(target_field_1, target_field_2)
@@ -269,7 +286,11 @@ The `experiments/` directory contains intentionally small applications:
 - `one_to_many_demo` varies how one SQLite balance is split across two JSON fields, proving that neither component matches independently while their sum produces and validates one expression correspondence.
 - `ambiguity_ranking_demo` gives one source two indistinguishable targets and proves that both alternatives survive inference and held-out validation with an explicit `ambiguous` status.
 - `dataflow_demo` contrasts a matching `read -> subtract -> persist` chain with a deliberately
-  correlated negative target where the candidate field flows only to logging.
+  correlated target where the candidate field flows into an unresolved logging call, demonstrating
+  conservative neutral evidence.
+- `interprocedural_demo` follows arguments across source files and into a target repository method;
+  its resolved positive, resolved negative, and unresolved-external variants exercise all three
+  evidence effects.
 
 These demos are test beds for one idea at a time. Experimental code stays outside the main package until its behavior and interface are understood.
 
@@ -283,10 +304,11 @@ Invariant does not yet understand a whole software system.
 - Relation inference supports exact and affine numeric transformations only.
 - Expression inference currently supports one source component and exactly two summed target components.
 - Candidate generation uses fixed configurable bounds; a bound that is too small can exclude a valid hypothesis and must be reported as an inference assumption.
-- Python data-flow analysis is intraprocedural and deliberately narrow. It does not resolve closures,
-  decorators, reflection, dynamic attributes, async behavior, polymorphism, or aliases across modules.
-- Calls are terminal flow nodes in v1; there is no interprocedural call graph or persistence-call
-  classification yet.
+- Python program analysis is deliberately narrow. It resolves only unique local function/method
+  names and follows at most two calls. It does not resolve closures, decorators, reflection, dynamic
+  attributes, async behavior, inheritance, polymorphism, or general aliases/import semantics.
+- Return values do not yet flow back into callers, and calls are not classified as persistence,
+  logging, or other semantic roles.
 - Static usage enriches existing dynamic candidates; it does not create correspondences by itself.
 - Observed schema evidence does not yet inspect declared JSON Schema, SQLite DDL, foreign keys, or indexes.
 - Candidate scores are deterministic ordering factors, not calibrated probabilities or confidence scores.
@@ -332,10 +354,9 @@ The long-term problem is larger than comparing two files or translating code lin
 > Which parts of two systems correspond, what relationship connects them, which behavior must remain stable, and does the new implementation belong in the target architecture?
 
 The contract model now handles pairwise and a first one-to-many relation, while Candidate Sets and
-Evidence Graph v4 make ambiguity and contradiction inspectable without deleting alternatives. The
-next static step is richer call context and carefully bounded interprocedural analysis. Those signals
-can strengthen or challenge candidates before entity kinds expand toward endpoints, events,
-components, and target-architecture constraints.
+Evidence Graph v4 make ambiguity, contradiction, and unresolved context inspectable without deleting
+alternatives. The next step is to stabilize function-level semantics—especially return flow and call
+roles—before functions and operations become correspondence entities alongside fields.
 
 ## License
 

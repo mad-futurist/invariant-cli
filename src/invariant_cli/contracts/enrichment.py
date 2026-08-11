@@ -3,12 +3,15 @@ from dataclasses import replace
 from invariant_cli.contracts.model import CorrespondenceCandidate
 from invariant_cli.matching.model import EntityKind, EvidenceKind
 from invariant_cli.matching.static.matcher import (
+    CALL_CONTEXT_PRODUCER,
     DATA_FLOW_PRODUCER,
     PRODUCER,
+    build_call_context_evidence,
     build_static_data_flow_evidence,
     build_static_usage_evidence,
 )
 from invariant_cli.matching.static.model import FieldUsage, FunctionFlow
+from invariant_cli.matching.static.program import ProgramIndex
 
 
 def enrich_with_static_usage(
@@ -53,8 +56,8 @@ def enrich_with_static_usage(
 
 def enrich_with_static_data_flow(
     candidates: list[CorrespondenceCandidate],
-    source_flows: list[FunctionFlow],
-    target_flows: list[FunctionFlow],
+    source_flows: ProgramIndex | list[FunctionFlow],
+    target_flows: ProgramIndex | list[FunctionFlow],
 ) -> list[CorrespondenceCandidate]:
     enriched: list[CorrespondenceCandidate] = []
 
@@ -63,7 +66,11 @@ def enrich_with_static_data_flow(
             item
             for item in candidate.evidence
             if not (
-                item.kind == EvidenceKind.STATIC_DATA_FLOW and item.producer == DATA_FLOW_PRODUCER
+                (item.kind == EvidenceKind.STATIC_DATA_FLOW and item.producer == DATA_FLOW_PRODUCER)
+                or (
+                    item.kind == EvidenceKind.CALL_CONTEXT
+                    and item.producer == CALL_CONTEXT_PRODUCER
+                )
             )
         ]
         data_flow_evidence = build_static_data_flow_evidence(
@@ -74,6 +81,14 @@ def enrich_with_static_data_flow(
         )
         if data_flow_evidence is not None:
             evidence.append(data_flow_evidence)
+        call_context_evidence = build_call_context_evidence(
+            candidate.source,
+            candidate.target,
+            source_flows,
+            target_flows,
+        )
+        if call_context_evidence is not None:
+            evidence.append(call_context_evidence)
         enriched.append(replace(candidate, evidence=evidence))
 
     return enriched

@@ -9,12 +9,10 @@ from pytest import MonkeyPatch
 from typer.testing import CliRunner
 
 from invariant_cli.cli import app
-from invariant_cli.contracts.storage import load_candidate_contract
-from invariant_cli.matching.model import EvidenceEffect, EvidenceKind
 
 runner = CliRunner()
 REPOSITORY_ROOT = Path(__file__).parents[2]
-EXPERIMENT = REPOSITORY_ROOT / "experiments" / "dataflow_demo"
+EXPERIMENT = REPOSITORY_ROOT / "experiments" / "interprocedural_demo"
 
 
 def _reset(demo: Path, balance_cents: int) -> None:
@@ -36,19 +34,19 @@ def _capture(demo: Path, app_path: str, amount: str) -> str:
 
 
 @pytest.mark.parametrize(
-    ("target", "effect", "status", "edge_kind"),
+    ("target", "effect", "status"),
     [
-        ("target_positive", "supports", "confident_candidate", "supports"),
-        ("target_negative", "neutral", "confident_candidate", "neutral"),
+        ("target", "supports", "confident_candidate"),
+        ("target_negative", "contradicts", "rejected"),
+        ("target_unresolved", "neutral", "confident_candidate"),
     ],
 )
-def test_dataflow_demo_distinguishes_connected_and_accidental_candidates(
+def test_interprocedural_program_context(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
     target: str,
     effect: str,
     status: str,
-    edge_kind: str,
 ) -> None:
     demo = tmp_path / target
     shutil.copytree(EXPERIMENT, demo)
@@ -60,8 +58,8 @@ def test_dataflow_demo_distinguishes_connected_and_accidental_candidates(
         _reset(demo, balance_cents)
         pairs.append(
             (
-                _capture(demo, "source/app.py", str(payment_cents)),
-                _capture(demo, f"{target}/app.py", f"{payment_cents / 100:g}"),
+                _capture(demo, "source/service.py", str(payment_cents)),
+                _capture(demo, f"{target}/payment.py", f"{payment_cents / 100:g}"),
             )
         )
 
@@ -71,15 +69,15 @@ def test_dataflow_demo_distinguishes_connected_and_accidental_candidates(
     args.extend(
         [
             "--source-code",
-            str(demo / "source" / "app.py"),
+            str(demo / "source"),
             "--target-code",
-            str(demo / target / "app.py"),
+            str(demo / target),
         ]
     )
     result = runner.invoke(app, args)
 
     assert result.exit_code == 0, result.stdout
-    assert f"data-flow evidence: {effect}" in result.stdout
+    assert f"call-context evidence: {effect}" in result.stdout
 
     contract_path = next((demo / ".invariant" / "contracts").glob("*.candidate.yaml"))
     contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
@@ -89,26 +87,19 @@ def test_dataflow_demo_distinguishes_connected_and_accidental_candidates(
         if item["source"]["identifier"] == "balance_cents"
         and item["target"]["identifier"] == "remaining_eur"
     )
-    data_flow = next(item for item in candidate["evidence"] if item["kind"] == "static_data_flow")
-    assert data_flow["producer"] == "python-dataflow-v1"
-    assert data_flow["effect"] == effect
-    assert data_flow["attributes"]["source"]["operations"] == ["subtract"]
+    context = next(item for item in candidate["evidence"] if item["kind"] == "call_context")
+    assert context["producer"] == "python-call-context-v1"
+    assert context["effect"] == effect
+    assert context["attributes"]["source_call_chain"] == ["pay", "persist_balance"]
     assert contract["candidate_sets"][0]["status"] == status
 
-    loaded = load_candidate_contract(contract_path)
-    loaded_data_flow = next(
-        item
-        for item in loaded.correspondences[0].evidence
-        if item.kind == EvidenceKind.STATIC_DATA_FLOW
-    )
-    assert loaded_data_flow.effect == EvidenceEffect(effect)
-
-    evidence_id = next(
-        node["id"]
+    evidence_node = next(
+        node
         for node in contract["evidence_graph"]["nodes"]
-        if node["kind"] == "evidence" and node["attributes"]["kind"] == "static_data_flow"
+        if node["kind"] == "evidence" and node["attributes"]["kind"] == "call_context"
     )
+    assert evidence_node["attributes"]["effect"] == effect
     assert any(
-        edge["source"] == evidence_id and edge["kind"] == edge_kind
+        edge["source"] == evidence_node["id"] and edge["kind"] == effect
         for edge in contract["evidence_graph"]["edges"]
     )

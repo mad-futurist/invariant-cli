@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+
 from invariant_cli.matching.model import EntityRef, Evidence, EvidenceEffect, EvidenceKind
 from invariant_cli.matching.static.dataflow import (
     FieldFlowTrace,
@@ -6,10 +10,17 @@ from invariant_cli.matching.static.dataflow import (
     trace_field_flows,
     traces_compatible,
 )
-from invariant_cli.matching.static.model import FieldUsage, FunctionFlow
+from invariant_cli.matching.static.model import (
+    AnalysisResolution,
+    FieldUsage,
+    FlowTerminalKind,
+    FunctionFlow,
+)
+from invariant_cli.matching.static.program import ProgramIndex
 
 PRODUCER = "python-ast-v1"
 DATA_FLOW_PRODUCER = "python-dataflow-v1"
+CALL_CONTEXT_PRODUCER = "python-call-context-v1"
 
 
 def compare_usage(source: FieldUsage, target: FieldUsage) -> dict[str, object]:
@@ -38,42 +49,19 @@ def build_static_usage_evidence(source: FieldUsage, target: FieldUsage) -> Evide
 def build_static_data_flow_evidence(
     source_entity: EntityRef,
     target_entity: EntityRef,
-    source_flows: list[FunctionFlow],
-    target_flows: list[FunctionFlow],
+    source_program: ProgramIndex | list[FunctionFlow],
+    target_program: ProgramIndex | list[FunctionFlow],
 ) -> Evidence | None:
-    source_traces = trace_field_flows(source_flows, source_entity.identifier)
-    target_traces = trace_field_flows(target_flows, target_entity.identifier)
-    source_chain = strongest_trace([trace for trace in source_traces if is_behavior_chain(trace)])
-
-    if source_chain is None or not target_traces:
+    match = _match_field_traces(
+        source_entity,
+        target_entity,
+        source_program,
+        target_program,
+        compatible=_local_data_flow_compatible,
+    )
+    if match is None:
         return None
-
-    compatible_pairs = [
-        (source, target)
-        for source in source_traces
-        for target in target_traces
-        if traces_compatible(source, target)
-    ]
-    if compatible_pairs:
-        source_trace, target_trace = max(
-            compatible_pairs,
-            key=lambda pair: (
-                len(pair[0].operations),
-                pair[0].function,
-                pair[1].function,
-            ),
-        )
-        effect = EvidenceEffect.SUPPORTS
-        reason = "compatible_behavior_chain"
-    else:
-        source_trace = source_chain
-        strongest_target = strongest_trace(target_traces)
-        if strongest_target is None:
-            return None
-        target_trace = strongest_target
-        effect = EvidenceEffect.CONTRADICTS
-        reason = "target_field_not_in_compatible_computation_call_chain"
-
+    effect, source_trace, target_trace, reason = match
     return Evidence(
         kind=EvidenceKind.STATIC_DATA_FLOW,
         producer=DATA_FLOW_PRODUCER,
@@ -86,10 +74,142 @@ def build_static_data_flow_evidence(
     )
 
 
+def build_call_context_evidence(
+    source_entity: EntityRef,
+    target_entity: EntityRef,
+    source_program: ProgramIndex | list[FunctionFlow],
+    target_program: ProgramIndex | list[FunctionFlow],
+) -> Evidence | None:
+    match = _match_field_traces(
+        source_entity,
+        target_entity,
+        source_program,
+        target_program,
+        compatible=traces_compatible,
+    )
+    if match is None:
+        return None
+    effect, source_trace, target_trace, reason = match
+    return Evidence(
+        kind=EvidenceKind.CALL_CONTEXT,
+        producer=CALL_CONTEXT_PRODUCER,
+        effect=effect,
+        attributes={
+            "source_call_chain": list(source_trace.call_chain),
+            "target_call_chain": list(target_trace.call_chain),
+            "source_terminal": source_trace.terminal_kind.value,
+            "target_terminal": target_trace.terminal_kind.value,
+            "source_resolution": source_trace.resolution.value,
+            "target_resolution": target_trace.resolution.value,
+            "reason": reason,
+        },
+    )
+
+
+def _match_field_traces(
+    source_entity: EntityRef,
+    target_entity: EntityRef,
+    source_program: ProgramIndex | list[FunctionFlow],
+    target_program: ProgramIndex | list[FunctionFlow],
+    *,
+    compatible: Callable[[FieldFlowTrace, FieldFlowTrace], bool],
+) -> tuple[EvidenceEffect, FieldFlowTrace, FieldFlowTrace, str] | None:
+    source_traces = trace_field_flows(source_program, source_entity.identifier)
+    target_traces = trace_field_flows(target_program, target_entity.identifier)
+    source_chain = strongest_trace([trace for trace in source_traces if is_behavior_chain(trace)])
+    if source_chain is None or not target_traces:
+        return None
+
+    compatible_pairs = [
+        (source, target)
+        for source in source_traces
+        for target in target_traces
+        if compatible(source, target)
+    ]
+    if compatible_pairs:
+        source_trace, target_trace = max(
+            compatible_pairs,
+            key=lambda pair: (
+                len(pair[0].operations),
+                len(pair[0].call_chain),
+                pair[0].function,
+                pair[1].function,
+            ),
+        )
+        return (
+            EvidenceEffect.SUPPORTS,
+            source_trace,
+            target_trace,
+            "compatible_resolved_behavior_chain",
+        )
+
+    unresolved = [
+        trace
+        for trace in [*source_traces, *target_traces]
+        if trace.resolution != AnalysisResolution.RESOLVED
+    ]
+    if unresolved:
+        unresolved_trace = strongest_trace(unresolved)
+        source_trace = _preferred_trace(source_traces, source_chain)
+        target_trace = _preferred_trace(target_traces, unresolved_trace)
+        resolution = (
+            unresolved_trace.resolution
+            if unresolved_trace is not None
+            else AnalysisResolution.UNRESOLVED
+        )
+        if resolution == AnalysisResolution.DEPTH_LIMIT:
+            reason = "call_depth_limit_reached"
+        elif (
+            unresolved_trace is not None
+            and unresolved_trace.terminal_kind == FlowTerminalKind.EXTERNAL_CALL
+        ):
+            reason = "unresolved_external_call"
+        else:
+            reason = "unsupported_syntax_or_alias"
+        return EvidenceEffect.NEUTRAL, source_trace, target_trace, reason
+
+    strongest_target = strongest_trace(target_traces)
+    if strongest_target is None:
+        return None
+    return (
+        EvidenceEffect.CONTRADICTS,
+        source_chain,
+        strongest_target,
+        "incompatible_fully_resolved_behavior_chain",
+    )
+
+
+def _preferred_trace(
+    traces: list[FieldFlowTrace],
+    fallback: FieldFlowTrace | None,
+) -> FieldFlowTrace:
+    unresolved = strongest_trace(
+        [trace for trace in traces if trace.resolution != AnalysisResolution.RESOLVED]
+    )
+    selected = unresolved or fallback or strongest_trace(traces)
+    if selected is None:
+        raise ValueError("A preferred trace requires at least one trace.")
+    return selected
+
+
+def _local_data_flow_compatible(source: FieldFlowTrace, target: FieldFlowTrace) -> bool:
+    return (
+        source.resolution == AnalysisResolution.RESOLVED
+        and target.resolution == AnalysisResolution.RESOLVED
+        and is_behavior_chain(source)
+        and is_behavior_chain(target)
+        and source.operations == target.operations
+    )
+
+
 def _trace_attributes(entity: EntityRef, trace: FieldFlowTrace) -> dict[str, object]:
     return {
         "function": trace.function,
         "reads_from": entity.locator,
         "operations": list(trace.operations),
         "flows_to_call": trace.flows_to_call,
+        "call_chain": list(trace.call_chain),
+        "terminal_kind": trace.terminal_kind.value,
+        "terminal": trace.terminal,
+        "resolution": trace.resolution.value,
     }

@@ -95,3 +95,27 @@ def outer():
 
     assert [flow.function.name for flow in flows] == ["outer"]
     assert flows[0].nodes == []
+
+
+def test_extracts_method_parameters_and_argument_slots(tmp_path: Path) -> None:
+    source = tmp_path / "methods.py"
+    source.write_text(
+        """
+class Repository:
+    def store(self, amount):
+        account["remaining"] = amount
+
+def process(value):
+    repository.store(value)
+""".strip(),
+        encoding="utf-8",
+    )
+
+    flows = extract_function_flows(source)
+    method = next(flow for flow in flows if flow.function.name == "Repository.store")
+    caller = next(flow for flow in flows if flow.function.name == "process")
+
+    assert method.parameters == ("amount",)
+    assert any(node.kind == "parameter" and node.label == "amount" for node in method.nodes)
+    argument_edge = next(edge for edge in caller.edges if edge.kind == "argument_to")
+    assert argument_edge.argument_slot == 0

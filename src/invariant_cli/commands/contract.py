@@ -26,7 +26,11 @@ from invariant_cli.contracts.validation import validate_candidate_contract
 from invariant_cli.execution.reader import load_execution_observations
 from invariant_cli.matching.model import EvidenceKind
 from invariant_cli.matching.static.model import FieldUsage
-from invariant_cli.matching.static.python_ast import extract_field_usage, extract_function_flows
+from invariant_cli.matching.static.program import (
+    ProgramIndex,
+    build_program_index,
+    extract_program_usage,
+)
 from invariant_cli.workspace.model import WorkspacePaths
 from invariant_cli.workspace.service import (
     get_workspace_paths,
@@ -61,14 +65,14 @@ WorkspaceRootOption = typer.Option(
 SourceCodeOption = typer.Option(
     None,
     "--source-code",
-    help="Python source file used to add static usage evidence.",
+    help="Python source file or directory used to add static program evidence.",
 )
 
 
 TargetCodeOption = typer.Option(
     None,
     "--target-code",
-    help="Python target file used to add static usage evidence.",
+    help="Python target file or directory used to add static program evidence.",
 )
 
 
@@ -162,8 +166,8 @@ def infer_contract(
         )
         candidates = enrich_with_static_data_flow(
             candidates,
-            extract_function_flows(source_path),
-            extract_function_flows(target_path),
+            _extract_program(source_path, label="source"),
+            _extract_program(target_path, label="target"),
         )
 
     candidate_sets = build_candidate_sets(
@@ -238,6 +242,12 @@ def infer_contract(
             )
             if data_flow:
                 typer.echo(f"  data-flow evidence: {data_flow.effect.value}")
+            call_context = next(
+                (e for e in candidate.evidence if e.kind == EvidenceKind.CALL_CONTEXT),
+                None,
+            )
+            if call_context:
+                typer.echo(f"  call-context evidence: {call_context.effect.value}")
             typer.echo("")
     if expression_candidates:
         for expression_candidate in expression_candidates:
@@ -273,15 +283,22 @@ def _parse_pair(
 
 def _extract_python_usage(path: Path, *, label: str) -> dict[str, FieldUsage]:
     try:
-        return extract_field_usage(path)
+        return extract_program_usage(path)
+    except (OSError, SyntaxError) as exc:
+        raise typer.BadParameter(f"Could not analyze {label} code: {exc}") from exc
+
+
+def _extract_program(path: Path, *, label: str) -> ProgramIndex:
+    try:
+        return build_program_index(path)
     except (OSError, SyntaxError) as exc:
         raise typer.BadParameter(f"Could not analyze {label} code: {exc}") from exc
 
 
 def _python_path(path: Path, *, label: str) -> Path:
     resolved = path.expanduser().resolve()
-    if not resolved.is_file():
-        raise typer.BadParameter(f"{label.capitalize()} code file not found: {path}")
+    if not resolved.exists() or not (resolved.is_file() or resolved.is_dir()):
+        raise typer.BadParameter(f"{label.capitalize()} code path not found: {path}")
     return resolved
 
 
