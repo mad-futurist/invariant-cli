@@ -134,7 +134,7 @@ def test_contract_infer_command(tmp_path: Path) -> None:
 
         data = yaml.safe_load(files[0].read_text(encoding="utf-8"))
 
-        assert data["version"] == 3
+        assert data["version"] == 4
         assert data["status"] == "candidate"
 
         assert len(data["paired_executions"]) == 3
@@ -164,13 +164,19 @@ def test_contract_infer_command(tmp_path: Path) -> None:
         }
 
         evidence = correspondence["evidence"]
-        assert len(evidence) == 2
+        assert len(evidence) == 3
         assert evidence[0]["kind"] == "dynamic_transition"
         assert evidence[0]["attributes"]["matched_pairs"] == 3
         assert evidence[0]["attributes"]["total_pairs"] == 3
         assert evidence[0]["attributes"]["distinct_transitions"] == 3
 
-        assert evidence[1] == {
+        schema = next(item for item in evidence if item["kind"] == "schema")
+        assert schema["producer"] == "observed-schema-v1"
+        assert schema["attributes"]["source_type"] == "number"
+        assert schema["attributes"]["target_type"] == "number"
+
+        static = next(item for item in evidence if item["kind"] == "static_usage")
+        assert static == {
             "kind": "static_usage",
             "producer": "python-ast-v1",
             "attributes": {
@@ -179,6 +185,10 @@ def test_contract_infer_command(tmp_path: Path) -> None:
                 "common_operations": ["read", "subtract", "write"],
             },
         }
+
+        assert data["candidate_sets"][0]["status"] == "confident_candidate"
+        assert data["candidate_sets"][0]["candidates"][0]["rank"] == 1
+        assert data["evidence_graph"]["version"] == 3
 
     finally:
         os.chdir(original_cwd)

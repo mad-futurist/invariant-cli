@@ -3,6 +3,7 @@ from enum import StrEnum
 
 
 class EvidenceNodeKind(StrEnum):
+    CANDIDATE_SET = "candidate_set"
     ENTITY = "entity"
     CORRESPONDENCE = "correspondence"
     RELATION = "relation"
@@ -14,6 +15,7 @@ class EvidenceNodeKind(StrEnum):
 
 
 class EvidenceEdgeKind(StrEnum):
+    CONTAINS = "contains"
     HAS_SOURCE = "has_source"
     HAS_TARGET = "has_target"
     USES_RELATION = "uses_relation"

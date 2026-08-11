@@ -5,12 +5,17 @@ from uuid import uuid4
 import yaml
 
 from invariant_cli.contracts.model import (
+    CandidateHypothesis,
+    CandidateSet,
+    CandidateSetStatus,
+    CandidateShape,
     CandidateTranslationContract,
     CorrespondenceCandidate,
     EntityExpression,
     ExecutionPairRef,
     ExpressionCorrespondenceCandidate,
     ExpressionKind,
+    RankedCandidate,
     Relation,
     RelationKind,
 )
@@ -21,6 +26,8 @@ from invariant_cli.contracts.validation import (
 from invariant_cli.evidence.builder import (
     build_candidate_evidence_graph,
     build_validation_evidence_graph,
+    correspondence_id,
+    expression_correspondence_id,
 )
 from invariant_cli.evidence.model import evidence_graph_to_data
 from invariant_cli.matching.model import (
@@ -106,6 +113,14 @@ def save_candidate_contract(
             }
             for candidate in contract.expression_correspondences
         ],
+        "candidate_sets": [
+            _candidate_set_to_data(
+                candidate_set,
+                contract.correspondences,
+                contract.expression_correspondences,
+            )
+            for candidate_set in contract.candidate_sets
+        ],
         "evidence_graph": evidence_graph_to_data(build_candidate_evidence_graph(contract)),
     }
 
@@ -190,11 +205,49 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
             )
         )
 
+    candidate_sets: list[CandidateSet] = []
+    field_candidates_by_id = {
+        correspondence_id(candidate): candidate for candidate in correspondences
+    }
+    expression_candidates_by_id = {
+        expression_correspondence_id(candidate): candidate
+        for candidate in expression_correspondences
+    }
+    for entry in data.get("candidate_sets", []):
+        ranked_candidates: list[RankedCandidate] = []
+        for ranked in entry.get("candidates", []):
+            shape = CandidateShape(ranked["shape"])
+            reference = str(ranked["correspondence"])
+            candidate_hypothesis: CandidateHypothesis
+            if shape == CandidateShape.FIELD:
+                candidate_hypothesis = field_candidates_by_id[reference]
+            else:
+                candidate_hypothesis = expression_candidates_by_id[reference]
+            ranked_candidates.append(
+                RankedCandidate(
+                    shape=shape,
+                    rank=int(ranked["rank"]),
+                    score=int(ranked["score"]),
+                    factors={
+                        str(name): int(value) for name, value in ranked.get("factors", {}).items()
+                    },
+                    candidate=candidate_hypothesis,
+                )
+            )
+        candidate_sets.append(
+            CandidateSet(
+                source=_load_entity(entry["source"]),
+                status=CandidateSetStatus(entry["status"]),
+                candidates=ranked_candidates,
+            )
+        )
+
     return CandidateTranslationContract(
         version=data["version"],
         paired_executions=paired_executions,
         correspondences=correspondences,
         expression_correspondences=expression_correspondences,
+        candidate_sets=candidate_sets,
     )
 
 
@@ -282,6 +335,53 @@ def _entity_to_data(entity: EntityRef) -> dict[str, str]:
         "kind": entity.kind.value,
         "namespace": entity.namespace,
         "identifier": entity.identifier,
+    }
+
+
+def _load_entity(data: dict[str, object]) -> EntityRef:
+    return EntityRef(
+        kind=EntityKind(str(data["kind"])),
+        namespace=str(data["namespace"]),
+        identifier=str(data["identifier"]),
+    )
+
+
+def _candidate_set_to_data(
+    candidate_set: CandidateSet,
+    correspondences: list[CorrespondenceCandidate],
+    expression_correspondences: list[ExpressionCorrespondenceCandidate],
+) -> dict[str, object]:
+    ranked_data: list[dict[str, object]] = []
+    for ranked in candidate_set.candidates:
+        if ranked.shape == CandidateShape.FIELD:
+            if not isinstance(ranked.candidate, CorrespondenceCandidate):
+                raise ValueError("Field ranking must reference a field correspondence.")
+            if ranked.candidate not in correspondences:
+                raise ValueError("Ranked field correspondence is missing from the contract.")
+            reference = correspondence_id(ranked.candidate)
+            target: object = _entity_to_data(ranked.candidate.target)
+        else:
+            if not isinstance(ranked.candidate, ExpressionCorrespondenceCandidate):
+                raise ValueError("Expression ranking must reference an expression correspondence.")
+            if ranked.candidate not in expression_correspondences:
+                raise ValueError("Ranked expression correspondence is missing from the contract.")
+            reference = expression_correspondence_id(ranked.candidate)
+            target = _expression_to_data(ranked.candidate.target)
+        ranked_data.append(
+            {
+                "shape": ranked.shape.value,
+                "correspondence": reference,
+                "rank": ranked.rank,
+                "score": ranked.score,
+                "factors": ranked.factors,
+                "target": target,
+            }
+        )
+
+    return {
+        "source": _entity_to_data(candidate_set.source),
+        "status": candidate_set.status.value,
+        "candidates": ranked_data,
     }
 
 

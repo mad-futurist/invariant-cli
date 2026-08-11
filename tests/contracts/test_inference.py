@@ -1,3 +1,4 @@
+from invariant_cli.contracts.generation import InferenceLimits
 from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import Relation, RelationKind
 from invariant_cli.matching.model import EvidenceKind
@@ -276,3 +277,34 @@ def test_preserves_ambiguous_candidates() -> None:
     target_paths = {candidate.target.identifier for candidate in candidates}
 
     assert target_paths == {"remaining", "total"}
+
+
+def test_bounds_schema_compatible_targets_before_relation_inference() -> None:
+    pairs = []
+    for before, after in [(100, 70), (100, 40), (250, 190)]:
+        pairs.append(
+            (
+                [observation("state.json", "balance", before, after)],
+                [
+                    Observation(
+                        source="account.json",
+                        kind="json",
+                        changes=[
+                            ValueChange("zeta", before, after),
+                            ValueChange("balance_copy", before, after),
+                            ValueChange("alpha", before, after),
+                        ],
+                    )
+                ],
+            )
+        )
+
+    candidates = infer_correspondences(
+        pairs,
+        limits=InferenceLimits(max_direct_targets_per_source=2),
+    )
+
+    assert [candidate.target.identifier for candidate in candidates] == [
+        "balance_copy",
+        "alpha",
+    ]

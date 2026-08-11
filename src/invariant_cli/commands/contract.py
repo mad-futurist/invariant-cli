@@ -4,12 +4,16 @@ import typer
 
 from invariant_cli.contracts.enrichment import enrich_with_static_usage
 from invariant_cli.contracts.expression_inference import infer_expression_correspondences
+from invariant_cli.contracts.generation import InferenceLimits
 from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import (
     CandidateTranslationContract,
+    CorrespondenceCandidate,
     EntityExpression,
     ExecutionPairRef,
+    ExpressionCorrespondenceCandidate,
 )
+from invariant_cli.contracts.ranking import build_candidate_sets, source_entities_from_pairs
 from invariant_cli.contracts.storage import (
     load_candidate_contract,
     save_candidate_contract,
@@ -65,12 +69,30 @@ TargetCodeOption = typer.Option(
 )
 
 
+MaxDirectTargetsOption = typer.Option(
+    50,
+    "--max-direct-targets-per-source",
+    min=1,
+    help="Maximum schema-compatible target fields considered per source field.",
+)
+
+
+MaxExpressionPairsOption = typer.Option(
+    100,
+    "--max-expression-pairs-per-source",
+    min=1,
+    help="Maximum structurally compatible target pairs considered per source field.",
+)
+
+
 @contract_app.command("infer")
 def infer_contract(
     pair: list[str] = PairOption,
     workspace_root: Path | None = WorkspaceRootOption,
     source_code: Path | None = SourceCodeOption,
     target_code: Path | None = TargetCodeOption,
+    max_direct_targets_per_source: int = MaxDirectTargetsOption,
+    max_expression_pairs_per_source: int = MaxExpressionPairsOption,
 ) -> None:
     workspace = _resolve_workspace(
         workspace_root,
@@ -117,8 +139,15 @@ def infer_contract(
             )
         )
 
-    candidates = infer_correspondences(observation_pairs)
-    expression_candidates = infer_expression_correspondences(observation_pairs)
+    limits = InferenceLimits(
+        max_direct_targets_per_source=max_direct_targets_per_source,
+        max_expression_pairs_per_source=max_expression_pairs_per_source,
+    )
+    candidates = infer_correspondences(observation_pairs, limits=limits)
+    expression_candidates = infer_expression_correspondences(
+        observation_pairs,
+        limits=limits,
+    )
 
     if source_code is not None and target_code is not None:
         candidates = enrich_with_static_usage(
@@ -127,11 +156,18 @@ def infer_contract(
             _extract_python_usage(target_code, label="target"),
         )
 
+    candidate_sets = build_candidate_sets(
+        candidates,
+        expression_candidates,
+        sources=source_entities_from_pairs(observation_pairs),
+    )
+
     contract = CandidateTranslationContract(
-        version=3,
+        version=4,
         paired_executions=pair_refs,
         correspondences=candidates,
         expression_correspondences=expression_candidates,
+        candidate_sets=candidate_sets,
     )
 
     output_path = save_candidate_contract(
@@ -143,6 +179,20 @@ def infer_contract(
 
     typer.echo(f"Candidate correspondences: {len(candidates)}")
     typer.echo(f"Expression correspondences: {len(expression_candidates)}")
+    typer.echo(f"Candidate sets: {len(candidate_sets)}")
+
+    if candidate_sets:
+        typer.echo("")
+        for candidate_set in candidate_sets:
+            typer.echo(f"{candidate_set.source.locator}: {candidate_set.status.value}")
+            for ranked in candidate_set.candidates:
+                factors = ", ".join(
+                    f"{name}={value}" for name, value in sorted(ranked.factors.items())
+                )
+                typer.echo(
+                    f"  rank {ranked.rank} score {ranked.score}: "
+                    f"{_candidate_target_label(ranked.candidate)} ({factors})"
+                )
 
     if candidates:
         typer.echo("")
@@ -342,3 +392,11 @@ def _expression_label(expression: EntityExpression) -> str:
     if len(expression.components) == 1:
         return components
     return f"{expression.kind.value}({components})"
+
+
+def _candidate_target_label(
+    candidate: CorrespondenceCandidate | ExpressionCorrespondenceCandidate,
+) -> str:
+    if isinstance(candidate, CorrespondenceCandidate):
+        return candidate.target.locator
+    return _expression_label(candidate.target)

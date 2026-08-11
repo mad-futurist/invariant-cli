@@ -96,13 +96,14 @@ def test_cross_representation_evidence_graph_end_to_end(
     }
 
     candidate_graph = contract_data["evidence_graph"]
-    assert candidate_graph["version"] == 2
+    assert candidate_graph["version"] == 3
     assert {node["kind"] for node in candidate_graph["nodes"]} == {
         "entity",
         "correspondence",
         "relation",
         "evidence",
         "execution_pair",
+        "candidate_set",
     }
     assert {edge["kind"] for edge in candidate_graph["edges"]} == {
         "has_source",
@@ -110,6 +111,7 @@ def test_cross_representation_evidence_graph_end_to_end(
         "uses_relation",
         "supports",
         "derived_from",
+        "contains",
     }
 
     _reset(demo, 30000)

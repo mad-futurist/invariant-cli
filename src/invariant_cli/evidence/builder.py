@@ -2,6 +2,7 @@ import hashlib
 import json
 
 from invariant_cli.contracts.model import (
+    CandidateSet,
     CandidateTranslationContract,
     CorrespondenceCandidate,
     EntityExpression,
@@ -136,7 +137,36 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                     for pair_id in pair_ids
                 )
 
-    return _graph(nodes, edges)
+    for candidate_set in contract.candidate_sets:
+        candidate_set_node = candidate_set_id(candidate_set)
+        source = entity_id(candidate_set.source)
+        nodes[source] = _entity_node(source, candidate_set.source)
+        nodes[candidate_set_node] = EvidenceNode(
+            id=candidate_set_node,
+            kind=EvidenceNodeKind.CANDIDATE_SET,
+            attributes={"status": candidate_set.status.value},
+        )
+        edges.append(EvidenceEdge(candidate_set_node, source, EvidenceEdgeKind.HAS_SOURCE))
+        for ranked in candidate_set.candidates:
+            if isinstance(ranked.candidate, CorrespondenceCandidate):
+                correspondence = correspondence_id(ranked.candidate)
+            else:
+                correspondence = expression_correspondence_id(ranked.candidate)
+            edges.append(
+                EvidenceEdge(
+                    candidate_set_node,
+                    correspondence,
+                    EvidenceEdgeKind.CONTAINS,
+                    attributes={
+                        "shape": ranked.shape.value,
+                        "rank": ranked.rank,
+                        "score": ranked.score,
+                        "factors": ranked.factors,
+                    },
+                )
+            )
+
+    return _graph(nodes, edges, version=3 if contract.candidate_sets else 2)
 
 
 def build_validation_evidence_graph(
@@ -230,7 +260,7 @@ def build_validation_evidence_graph(
                     )
                 )
 
-    return _graph(nodes, edges)
+    return _graph(nodes, edges, version=candidate_graph.version)
 
 
 def entity_id(entity: EntityRef) -> str:
@@ -287,6 +317,10 @@ def execution_pair_id(pair: ExecutionPairRef) -> str:
     return "execution-pair:" + _digest(
         {"source": pair.source_execution, "target": pair.target_execution}
     )
+
+
+def candidate_set_id(candidate_set: CandidateSet) -> str:
+    return "candidate-set:" + _digest({"source": entity_id(candidate_set.source)})
 
 
 def evidence_id(
@@ -408,10 +442,15 @@ def _digest(value: object) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
-def _graph(nodes: dict[str, EvidenceNode], edges: list[EvidenceEdge]) -> EvidenceGraph:
+def _graph(
+    nodes: dict[str, EvidenceNode],
+    edges: list[EvidenceEdge],
+    *,
+    version: int,
+) -> EvidenceGraph:
     unique_edges = {(edge.source, edge.target, edge.kind.value): edge for edge in edges}
     return EvidenceGraph(
-        version=2,
+        version=version,
         nodes=sorted(nodes.values(), key=lambda node: node.id),
         edges=sorted(
             unique_edges.values(),

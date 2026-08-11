@@ -21,6 +21,7 @@ class EntityRef:
 class EvidenceKind(StrEnum):
     DYNAMIC_TRANSITION = "dynamic_transition"
     STATIC_USAGE = "static_usage"
+    SCHEMA = "schema"
 
 
 @dataclass(frozen=True)

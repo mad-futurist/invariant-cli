@@ -14,6 +14,18 @@ class ExpressionKind(StrEnum):
     SUM = "sum"
 
 
+class CandidateShape(StrEnum):
+    FIELD = "field"
+    EXPRESSION = "expression"
+
+
+class CandidateSetStatus(StrEnum):
+    CONFIDENT_CANDIDATE = "confident_candidate"
+    AMBIGUOUS = "ambiguous"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    REJECTED = "rejected"
+
+
 @dataclass(frozen=True)
 class Relation:
     kind: RelationKind
@@ -54,6 +66,25 @@ class ExpressionCorrespondenceCandidate:
     evidence: list[Evidence]
 
 
+CandidateHypothesis = CorrespondenceCandidate | ExpressionCorrespondenceCandidate
+
+
+@dataclass(frozen=True)
+class RankedCandidate:
+    shape: CandidateShape
+    rank: int
+    score: int
+    factors: dict[str, int]
+    candidate: CandidateHypothesis
+
+
+@dataclass(frozen=True)
+class CandidateSet:
+    source: EntityRef
+    status: CandidateSetStatus
+    candidates: list[RankedCandidate] = field(default_factory=list)
+
+
 @dataclass(frozen=True)
 class ExecutionPairRef:
     source_execution: str
@@ -68,3 +99,4 @@ class CandidateTranslationContract:
     expression_correspondences: list[ExpressionCorrespondenceCandidate] = field(
         default_factory=list
     )
+    candidate_sets: list[CandidateSet] = field(default_factory=list)

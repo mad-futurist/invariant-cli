@@ -1,11 +1,12 @@
+from invariant_cli.contracts.generation import InferenceLimits, shortlist_direct_targets
 from invariant_cli.contracts.model import CorrespondenceCandidate
 from invariant_cli.contracts.relations import infer_relation
 from invariant_cli.matching.model import (
-    EntityKind,
-    EntityRef,
     Evidence,
     EvidenceKind,
 )
+from invariant_cli.matching.schema.model import SchemaProfile
+from invariant_cli.matching.schema.observed import build_schema_evidence, profile_observed_field
 from invariant_cli.matching.transition import (
     ObservationKey,
     ObservedTransition,
@@ -24,6 +25,8 @@ def infer_correspondences(
             list[Observation],
         ]
     ],
+    *,
+    limits: InferenceLimits | None = None,
 ) -> list[CorrespondenceCandidate]:
     if not pairs:
         return []
@@ -43,6 +46,9 @@ def infer_correspondences(
         source_keys.update(source_values)
         target_keys.update(target_values)
 
+    limits = limits or InferenceLimits()
+    source_profiles = _profiles(source_keys, [source for source, _ in flattened_pairs])
+    target_profiles = _profiles(target_keys, [target for _, target in flattened_pairs])
     candidates: list[CorrespondenceCandidate] = []
 
     for source_key in sorted(source_keys):
@@ -68,7 +74,15 @@ def infer_correspondences(
         if distinct_transitions < 2:
             continue
 
-        for target_key in sorted(target_keys):
+        source_profile = source_profiles.get(source_key)
+        if source_profile is None:
+            continue
+
+        for target_key in shortlist_direct_targets(
+            source_profile,
+            target_profiles,
+            limit=limits.max_direct_targets_per_source,
+        ):
             target_transitions = [
                 target_values.get(target_key, MISSING) for _, target_values in flattened_pairs
             ]
@@ -88,26 +102,14 @@ def infer_correspondences(
             if relation is None:
                 continue
 
-            source_observation_kind, source_resource, source_path = source_key
-            target_observation_kind, target_resource, target_path = target_key
-            source_entity_kind = _entity_kind(source_observation_kind)
-            target_entity_kind = _entity_kind(target_observation_kind)
-
-            if source_entity_kind is None or target_entity_kind is None:
+            target_profile = target_profiles.get(target_key)
+            if target_profile is None:
                 continue
 
             candidates.append(
                 CorrespondenceCandidate(
-                    source=EntityRef(
-                        kind=source_entity_kind,
-                        namespace=source_resource,
-                        identifier=source_path,
-                    ),
-                    target=EntityRef(
-                        kind=target_entity_kind,
-                        namespace=target_resource,
-                        identifier=target_path,
-                    ),
+                    source=source_profile.entity,
+                    target=target_profile.entity,
                     relation=relation,
                     evidence=[
                         Evidence(
@@ -118,7 +120,8 @@ def infer_correspondences(
                                 "total_pairs": len(pairs),
                                 "distinct_transitions": distinct_transitions,
                             },
-                        )
+                        ),
+                        build_schema_evidence(source_profile, (target_profile,)),
                     ],
                 )
             )
@@ -126,12 +129,19 @@ def infer_correspondences(
     return candidates
 
 
-def _entity_kind(observation_kind: str) -> EntityKind | None:
-    if observation_kind == "json":
-        return EntityKind.JSON_FIELD
-    if observation_kind == "sqlite":
-        return EntityKind.SQLITE_FIELD
-    return None
+def _profiles(
+    keys: set[ObservationKey],
+    observations: list[dict[ObservationKey, ObservedTransition]],
+) -> dict[ObservationKey, SchemaProfile]:
+    profiles: dict[ObservationKey, SchemaProfile] = {}
+    for key in keys:
+        profile = profile_observed_field(
+            key,
+            (values[key] for values in observations if key in values),
+        )
+        if profile is not None:
+            profiles[key] = profile
+    return profiles
 
 
 def transitions_equal(

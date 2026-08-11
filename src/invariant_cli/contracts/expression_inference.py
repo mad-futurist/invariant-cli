@@ -1,12 +1,13 @@
-from itertools import combinations
-
+from invariant_cli.contracts.generation import InferenceLimits, shortlist_expression_targets
 from invariant_cli.contracts.model import (
     EntityExpression,
     ExpressionCorrespondenceCandidate,
     ExpressionKind,
 )
 from invariant_cli.contracts.relations import infer_relation, to_decimal
-from invariant_cli.matching.model import EntityKind, EntityRef, Evidence, EvidenceKind
+from invariant_cli.matching.model import Evidence, EvidenceKind
+from invariant_cli.matching.schema.model import SchemaProfile
+from invariant_cli.matching.schema.observed import build_schema_evidence, profile_observed_field
 from invariant_cli.matching.transition import (
     ObservationKey,
     ObservedTransition,
@@ -21,6 +22,8 @@ PRODUCER = "dynamic-sum-v1"
 
 def infer_expression_correspondences(
     pairs: list[tuple[list[Observation], list[Observation]]],
+    *,
+    limits: InferenceLimits | None = None,
 ) -> list[ExpressionCorrespondenceCandidate]:
     """Infer one source entity against the sum of exactly two target entities."""
     if not pairs:
@@ -31,6 +34,9 @@ def infer_expression_correspondences(
     ]
     source_keys = sorted({key for source, _ in flattened_pairs for key in source})
     target_keys = sorted({key for _, target in flattened_pairs for key in target})
+    limits = limits or InferenceLimits()
+    source_profiles = _profiles(source_keys, [source for source, _ in flattened_pairs])
+    target_profiles = _profiles(target_keys, [target for _, target in flattened_pairs])
     candidates: list[ExpressionCorrespondenceCandidate] = []
 
     for source_key in source_keys:
@@ -38,11 +44,16 @@ def infer_expression_correspondences(
         if source_transitions is None or _distinct_count(source_transitions) < 2:
             continue
 
-        source_entity = _entity_ref(source_key)
-        if source_entity is None:
+        source_profile = source_profiles.get(source_key)
+        if source_profile is None:
             continue
 
-        for target_key_pair in combinations(target_keys, SUM_COMPONENT_COUNT):
+        for target_key_pair in shortlist_expression_targets(
+            source_profile,
+            target_profiles,
+            component_count=SUM_COMPONENT_COUNT,
+            limit=limits.max_expression_pairs_per_source,
+        ):
             target_transitions = _summed_transitions(
                 target_key_pair,
                 [target for _, target in flattened_pairs],
@@ -50,19 +61,21 @@ def infer_expression_correspondences(
             if target_transitions is None:
                 continue
 
-            target_entities = tuple(_entity_ref(key) for key in target_key_pair)
-            if any(entity is None for entity in target_entities):
+            typed_target_profiles = tuple(target_profiles[key] for key in target_key_pair)
+            if len(typed_target_profiles) != SUM_COMPONENT_COUNT:
                 continue
 
             relation = infer_relation(source_transitions, target_transitions)
             if relation is None:
                 continue
 
-            typed_targets = tuple(entity for entity in target_entities if entity is not None)
             candidates.append(
                 ExpressionCorrespondenceCandidate(
-                    source=EntityExpression(ExpressionKind.IDENTITY, (source_entity,)),
-                    target=EntityExpression(ExpressionKind.SUM, typed_targets),
+                    source=EntityExpression(ExpressionKind.IDENTITY, (source_profile.entity,)),
+                    target=EntityExpression(
+                        ExpressionKind.SUM,
+                        tuple(profile.entity for profile in typed_target_profiles),
+                    ),
                     relation=relation,
                     evidence=[
                         Evidence(
@@ -75,7 +88,8 @@ def infer_expression_correspondences(
                                 "target_operator": ExpressionKind.SUM.value,
                                 "target_component_count": SUM_COMPONENT_COUNT,
                             },
-                        )
+                        ),
+                        build_schema_evidence(source_profile, typed_target_profiles),
                     ],
                 )
             )
@@ -125,13 +139,16 @@ def _distinct_count(transitions: list[ObservedTransition]) -> int:
     return len({transition_fingerprint(transition) for transition in transitions})
 
 
-def _entity_ref(key: ObservationKey) -> EntityRef | None:
-    observation_kind, namespace, identifier = key
-    kinds = {
-        "json": EntityKind.JSON_FIELD,
-        "sqlite": EntityKind.SQLITE_FIELD,
-    }
-    kind = kinds.get(observation_kind)
-    if kind is None:
-        return None
-    return EntityRef(kind=kind, namespace=namespace, identifier=identifier)
+def _profiles(
+    keys: list[ObservationKey],
+    observations: list[dict[ObservationKey, ObservedTransition]],
+) -> dict[ObservationKey, SchemaProfile]:
+    profiles: dict[ObservationKey, SchemaProfile] = {}
+    for key in keys:
+        profile = profile_observed_field(
+            key,
+            (values[key] for values in observations if key in values),
+        )
+        if profile is not None:
+            profiles[key] = profile
+    return profiles

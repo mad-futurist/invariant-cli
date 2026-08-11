@@ -94,7 +94,10 @@ def test_static_usage_demo_end_to_end(tmp_path: Path, monkeypatch: MonkeyPatch) 
         "scale": "0.01",
         "offset": "0",
     }
-    assert correspondence["evidence"][1] == {
+    static_evidence = next(
+        item for item in correspondence["evidence"] if item["kind"] == "static_usage"
+    )
+    assert static_evidence == {
         "kind": "static_usage",
         "producer": "python-ast-v1",
         "attributes": {

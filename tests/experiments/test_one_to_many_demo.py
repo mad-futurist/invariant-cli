@@ -80,7 +80,7 @@ def test_one_to_many_demo_end_to_end(tmp_path: Path, monkeypatch: MonkeyPatch) -
 
     contract_file = next((demo / ".invariant" / "contracts").glob("*.candidate.yaml"))
     contract_data = yaml.safe_load(contract_file.read_text(encoding="utf-8"))
-    assert contract_data["version"] == 3
+    assert contract_data["version"] == 4
     assert contract_data["correspondences"] == []
     expression = contract_data["expression_correspondences"][0]
     assert expression["source"]["kind"] == "identity"
@@ -93,9 +93,12 @@ def test_one_to_many_demo_end_to_end(tmp_path: Path, monkeypatch: MonkeyPatch) -
     assert expression["relation"] == {"kind": "affine", "scale": "0.01", "offset": "0"}
 
     graph = contract_data["evidence_graph"]
-    assert graph["version"] == 2
+    assert graph["version"] == 3
     assert len([node for node in graph["nodes"] if node["kind"] == "expression"]) == 2
     assert len([edge for edge in graph["edges"] if edge["kind"] == "has_component"]) == 3
+    candidate_set = contract_data["candidate_sets"][0]
+    assert candidate_set["status"] == "confident_candidate"
+    assert candidate_set["candidates"][0]["shape"] == "expression"
 
     _reset(demo, 30000, 110, 190)
     source_id = _capture(

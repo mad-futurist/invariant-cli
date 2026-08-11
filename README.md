@@ -71,6 +71,9 @@ Invariant can:
 - discover exact and affine numeric relations;
 - infer a controlled one-to-many relation from one source field to the sum of two target fields;
 - add simple Python AST usage evidence to dynamic candidates;
+- block type-incompatible field pairs and bound direct and expression candidate generation;
+- attach observed JSON/SQLite schema evidence to surviving hypotheses;
+- group hypotheses by source, rank them deterministically, and report explicit ambiguity;
 - save candidate translation contracts as YAML;
 - store a versioned Evidence Graph linking entities, relations, evidence, and training runs;
 - validate candidates on executions that were not used for inference;
@@ -175,17 +178,54 @@ uv run invariant contract infer \
 
 `--source-code` and `--target-code` must be used together. The static analyser currently recognizes string-literal dictionary access such as `state["balance"]`.
 
+Candidate generation is bounded before relation inference. The defaults consider at most 50
+schema-compatible direct targets and 100 same-scope numeric target pairs per source field. They can
+be changed explicitly:
+
+```bash
+uv run invariant contract infer \
+  --pair SOURCE_1:TARGET_1 \
+  --pair SOURCE_2:TARGET_2 \
+  --pair SOURCE_3:TARGET_3 \
+  --max-direct-targets-per-source 25 \
+  --max-expression-pairs-per-source 40
+```
+
+The current schema producer is deliberately observational: it derives value type, nullability,
+structural parent, cardinality, primary-key path context, and identifier tokens from the captured
+JSON/SQLite transitions. It does not yet read declared JSON Schema or SQLite DDL.
+
 Candidate contracts are saved under `.invariant/contracts/`.
 
-Every saved candidate also contains `evidence_graph` version 2. It is an inspectable graph, not a
+Every saved candidate also contains `evidence_graph` version 3. It is an inspectable graph, not a
 confidence score. Its nodes represent entities, proposed correspondences, relations, evidence items,
-expressions, and paired training executions. Edges say which entity or expression is the source or
+expressions, candidate sets, and paired training executions. Edges say which entity or expression is the source or
 target, which entities form an expression, which relation a candidate uses, which evidence supports
-it, and which execution pairs produced dynamic evidence. Stable content-based IDs make the graph
+it, which ranked alternatives belong to a source candidate set, and which execution pairs produced dynamic evidence. Stable content-based IDs make the graph
 deterministic even though the contract file itself receives a new UUID.
 
-Contract format v3 keeps ordinary field-to-field candidates under `correspondences` and adds
-`expression_correspondences`. The first expression policy is intentionally small:
+Contract format v4 keeps ordinary field-to-field candidates under `correspondences`, expression
+hypotheses under `expression_correspondences`, and adds first-class `candidate_sets`. The flat lists
+remain the executable validation projection; each candidate set groups both shapes under one source,
+stores deterministic rank factors, and has one of these statuses:
+
+```text
+confident_candidate
+ambiguous
+insufficient_evidence
+rejected
+```
+
+Ranking is an explanation over evidence, not an automatic truth decision. Alternatives are preserved
+in the contract and Evidence Graph even when one candidate ranks higher. The first expression policy
+remains intentionally small:
+
+The initial weights are intentionally simple and visible in every candidate's `factors`: dynamic
+evidence has a base of 100 plus bounded pair/transition contributions; compatible observed type adds
+30; matching nullability, key context, scope, and name tokens add smaller schema contributions; every
+common static operation adds 10; and an expression pays a complexity cost of 5. A tie or a top-two
+distance of at most 5 produces `ambiguous`. These are deterministic ordering rules for an experiment,
+not learned weights or calibrated probabilities.
 
 ```text
 identity(source_field) -> sum(target_field_1, target_field_2)
@@ -218,6 +258,7 @@ The `experiments/` directory contains intentionally small applications:
 - `sqlite_observer_demo` runs the same inference and held-out validation pipeline against two different relational schemas, using scoped capture instead of scanning the complete workspace.
 - `cross_representation_demo` proves that the shared capture and matching pipeline can infer and validate a cents-to-euros relation from SQLite on one side and JSON on the other; it also checks both candidate and validation Evidence Graphs.
 - `one_to_many_demo` varies how one SQLite balance is split across two JSON fields, proving that neither component matches independently while their sum produces and validates one expression correspondence.
+- `ambiguity_ranking_demo` gives one source two indistinguishable targets and proves that both alternatives survive inference and held-out validation with an explicit `ambiguous` status.
 
 These demos are test beds for one idea at a time. Experimental code stays outside the main package until its behavior and interface are understood.
 
@@ -230,11 +271,12 @@ Invariant does not yet understand a whole software system.
 - Unscoped capture still walks the complete workspace; large projects should use `--observe`.
 - Relation inference supports exact and affine numeric transformations only.
 - Expression inference currently supports one source component and exactly two summed target components.
-- Expression search considers every target-field pair, so larger observation sets will need candidate generation limits and ranking.
+- Candidate generation uses fixed configurable bounds; a bound that is too small can exclude a valid hypothesis and must be reported as an inference assumption.
 - Python static analysis is syntax-based. It does not build call graphs or follow data flow.
 - Static usage enriches existing dynamic candidates; it does not create correspondences by itself.
-- Candidates are not ranked or fused into a confidence score.
-- Evidence Graph v2 is embedded in saved artifacts and is not yet queryable through a CLI command.
+- Observed schema evidence does not yet inspect declared JSON Schema, SQLite DDL, foreign keys, or indexes.
+- Candidate scores are deterministic ordering factors, not calibrated probabilities or confidence scores.
+- Evidence Graph v3 is embedded in saved artifacts and is not yet queryable through a CLI command.
 - Dynamic evidence currently points to paired executions as a whole; it does not yet store individual observed-transition nodes.
 - There is no target-architecture model, implementation generator, or production gate system yet.
 
@@ -275,12 +317,11 @@ The long-term problem is larger than comparing two files or translating code lin
 
 > Which parts of two systems correspond, what relationship connects them, which behavior must remain stable, and does the new implementation belong in the target architecture?
 
-The contract model now handles pairwise and a first one-to-many relation, while Evidence Graph v2
-makes both structures inspectable. The strongest next stage is ambiguity management: generate a
-bounded candidate set, attach independent dynamic, static-usage, and schema evidence, then rank without
-silently discarding alternatives. A validation gate should report why a candidate won and preserve
-conflicting candidates for review. That creates a safer base for richer expressions, static data flow,
-and eventual implementation generation.
+The contract model now handles pairwise and a first one-to-many relation, while Candidate Sets and
+Evidence Graph v3 make ambiguity inspectable without deleting alternatives. The strongest next stage
+is richer independent evidence: declared schema and database constraints, then bounded static data
+flow and call context. Those signals can strengthen or challenge the current ranking before entity
+kinds expand toward endpoints, events, components, and target-architecture constraints.
 
 ## License
 
