@@ -12,6 +12,7 @@ class EvidenceNodeKind(StrEnum):
     VALIDATION_PAIR = "validation_pair"
     VALIDATION = "validation"
     EXPRESSION = "expression"
+    OBLIGATION = "obligation"
 
 
 class EvidenceEdgeKind(StrEnum):

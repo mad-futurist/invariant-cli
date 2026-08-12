@@ -8,14 +8,11 @@ All variants preserve the same small-sample runtime relation:
 
 `state.json#balance_cents * 0.01 = account.json#remaining_eur`
 
-The Python adapter can see all three possible callees, but it cannot yet prove imported-function or
-receiver-type identity. The unique suffix matches are therefore recorded as `heuristic`, and all
-three variants conservatively produce neutral call-context evidence:
+The Python adapter resolves explicit imported functions and simple module-level repository
+instances exactly. Unknown external calls remain conservative:
 
-- `target` would be compatible if the receiver were resolved, but heuristic resolution cannot
-  support it;
-- `target_negative` would be incompatible if the imported source call were resolved, but an
-  unresolved source path cannot prove contradiction;
+- `target` supports the resolved repository behavior chain;
+- `target_negative` contradicts the fully resolved source behavior chain;
 - `target_unresolved` also reaches the unknown external call `logger.info`.
 
 This experiment protects the safety rule: suffix-only call matching must never produce false

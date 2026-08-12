@@ -1,0 +1,20 @@
+version: 1
+
+components:
+  - id: payment-service
+    modules: [payment]
+  - id: persistence
+    modules: [repository]
+
+rules:
+  - id: payment-no-direct-state-write
+    kind: forbid_state_write
+    component: payment-service
+  - id: persistence-owns-account
+    kind: state_write_owner
+    component: persistence
+    state: [remaining_eur]
+  - id: payment-must-use-persistence
+    kind: require_dependency
+    from: payment-service
+    to: persistence

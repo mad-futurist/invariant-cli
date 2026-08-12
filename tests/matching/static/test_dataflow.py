@@ -204,3 +204,58 @@ def process_payment(value):
     assert evidence.effect == EvidenceEffect.NEUTRAL
     assert evidence.attributes["target_resolution"] == "unresolved"
     assert evidence.attributes["reason"] == "unsupported_syntax_or_alias"
+
+
+def test_return_flow_resumes_in_caller_and_reaches_state_write(tmp_path: Path) -> None:
+    source = _flows(
+        tmp_path,
+        "source.py",
+        """
+def calculate(balance, amount):
+    return balance - amount
+
+def persist(value):
+    state["balance_cents"] = value
+
+def pay(amount):
+    current = state["balance_cents"]
+    updated = calculate(current, amount)
+    persist(updated)
+""",
+    )
+    target = _flows(
+        tmp_path,
+        "target.py",
+        """
+def compute(current, value):
+    return current - value
+
+def store(value):
+    account["remaining_eur"] = value
+
+def process(value):
+    balance = account["remaining_eur"]
+    result = compute(balance, value)
+    store(result)
+""",
+    )
+
+    evidence = build_static_data_flow_evidence(
+        _entity("state.json", "balance_cents"),
+        _entity("account.json", "remaining_eur"),
+        source,
+        target,
+    )
+
+    assert evidence is not None
+    assert evidence.effect == EvidenceEffect.SUPPORTS
+    source_attributes = evidence.attributes["source"]
+    target_attributes = evidence.attributes["target"]
+    assert isinstance(source_attributes, dict)
+    assert isinstance(target_attributes, dict)
+    assert source_attributes["operations"] == ["subtract"]
+    assert target_attributes["operations"] == ["subtract"]
+    assert source_attributes["call_chain"] == ["pay", "calculate", "persist"]
+    assert target_attributes["call_chain"] == ["process", "compute", "store"]
+    assert source_attributes["terminal_kind"] == "state_write"
+    assert target_attributes["terminal_kind"] == "state_write"

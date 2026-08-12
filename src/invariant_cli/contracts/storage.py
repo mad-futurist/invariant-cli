@@ -15,13 +15,18 @@ from invariant_cli.contracts.model import (
     ExecutionPairRef,
     ExpressionCorrespondenceCandidate,
     ExpressionKind,
+    FunctionCorrespondenceCandidate,
+    FunctionCorrespondenceStatus,
     RankedCandidate,
     Relation,
     RelationKind,
+    VerificationObligation,
+    VerificationObligationKind,
 )
 from invariant_cli.contracts.validation import (
     ContractValidationResult,
     ExpressionComponentValidation,
+    ValidationVerdict,
 )
 from invariant_cli.evidence.builder import (
     build_candidate_evidence_graph,
@@ -126,6 +131,31 @@ def save_candidate_contract(
                 contract.expression_correspondences,
             )
             for candidate_set in contract.candidate_sets
+        ],
+        "function_correspondences": [
+            {
+                "source": _entity_to_data(candidate.source),
+                "target": _entity_to_data(candidate.target),
+                "status": candidate.status.value,
+                "mapped_state_reads": _mapped_states_to_data(candidate.mapped_state_reads),
+                "mapped_state_writes": _mapped_states_to_data(candidate.mapped_state_writes),
+                "evidence": [_evidence_to_data(item) for item in candidate.evidence],
+            }
+            for candidate in contract.function_correspondences
+        ],
+        "obligations": [
+            {
+                "id": obligation.id,
+                "kind": obligation.kind.value,
+                "source": (
+                    None if obligation.source is None else _entity_to_data(obligation.source)
+                ),
+                "target": (
+                    None if obligation.target is None else _entity_to_data(obligation.target)
+                ),
+                "rule": obligation.rule,
+            }
+            for obligation in contract.obligations
         ],
         "evidence_graph": evidence_graph_to_data(build_candidate_evidence_graph(contract)),
     }
@@ -252,12 +282,36 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
             )
         )
 
+    function_correspondences = [
+        FunctionCorrespondenceCandidate(
+            source=_load_entity(entry["source"]),
+            target=_load_entity(entry["target"]),
+            status=FunctionCorrespondenceStatus(entry.get("status", "candidate")),
+            mapped_state_reads=_load_mapped_states(entry.get("mapped_state_reads", [])),
+            mapped_state_writes=_load_mapped_states(entry.get("mapped_state_writes", [])),
+            evidence=[_load_evidence(item) for item in entry.get("evidence", [])],
+        )
+        for entry in data.get("function_correspondences", [])
+    ]
+    obligations = [
+        VerificationObligation(
+            id=str(entry["id"]),
+            kind=VerificationObligationKind(entry["kind"]),
+            source=None if entry.get("source") is None else _load_entity(entry["source"]),
+            target=None if entry.get("target") is None else _load_entity(entry["target"]),
+            rule=None if entry.get("rule") is None else str(entry["rule"]),
+        )
+        for entry in data.get("obligations", [])
+    ]
+
     return CandidateTranslationContract(
         version=data["version"],
         paired_executions=paired_executions,
         correspondences=correspondences,
         expression_correspondences=expression_correspondences,
         candidate_sets=candidate_sets,
+        function_correspondences=function_correspondences,
+        obligations=obligations,
     )
 
 
@@ -340,6 +394,14 @@ def save_contract_validation(
     return output_path
 
 
+def load_contract_validation(path: Path) -> ContractValidationResult:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return ContractValidationResult(
+        verdict=ValidationVerdict(str(data["verdict"])),
+        pairs=[],
+    )
+
+
 def _evidence_family(data: dict[str, object]) -> EvidenceFamily:
     raw_family = data.get("family")
     if raw_family is not None:
@@ -365,6 +427,53 @@ def _entity_to_data(entity: EntityRef) -> dict[str, str]:
         "namespace": entity.namespace,
         "identifier": entity.identifier,
     }
+
+
+def _evidence_to_data(evidence: Evidence) -> dict[str, object]:
+    return {
+        "kind": evidence.kind.value,
+        "producer": evidence.producer,
+        "family": evidence.family.value,
+        "effect": evidence.effect.value,
+        "attributes": evidence.attributes,
+    }
+
+
+def _load_evidence(data: dict[str, object]) -> Evidence:
+    raw_attributes = data.get("attributes")
+    attributes: dict[str, object] = (
+        {str(key): value for key, value in raw_attributes.items()}
+        if isinstance(raw_attributes, dict)
+        else {}
+    )
+    return Evidence(
+        kind=EvidenceKind(str(data["kind"])),
+        producer=str(data["producer"]),
+        family=_evidence_family(data),
+        effect=EvidenceEffect(str(data.get("effect", "supports"))),
+        attributes=attributes,
+    )
+
+
+def _mapped_states_to_data(
+    mapped: tuple[tuple[EntityRef, EntityRef], ...],
+) -> list[dict[str, object]]:
+    return [
+        {"source": _entity_to_data(source), "target": _entity_to_data(target)}
+        for source, target in mapped
+    ]
+
+
+def _load_mapped_states(raw: object) -> tuple[tuple[EntityRef, EntityRef], ...]:
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        (_load_entity(item["source"]), _load_entity(item["target"]))
+        for item in raw
+        if isinstance(item, dict)
+        and isinstance(item.get("source"), dict)
+        and isinstance(item.get("target"), dict)
+    )
 
 
 def _load_entity(data: dict[str, object]) -> EntityRef:

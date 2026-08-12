@@ -3,6 +3,7 @@ import typer
 from invariant_cli.commands.capture import capture_command
 from invariant_cli.commands.compare import compare_command
 from invariant_cli.commands.contract import contract_app
+from invariant_cli.commands.gate import gate_app
 from invariant_cli.commands.init import init_command
 
 app = typer.Typer(
@@ -31,6 +32,7 @@ app.add_typer(
     contract_app,
     name="contract",
 )
+app.add_typer(gate_app, name="gate")
 
 
 def main() -> None:

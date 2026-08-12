@@ -5,6 +5,7 @@ from enum import StrEnum
 class EntityKind(StrEnum):
     JSON_FIELD = "json_field"
     SQLITE_FIELD = "sqlite_field"
+    FUNCTION = "function"
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ class EvidenceKind(StrEnum):
     STATIC_DATA_FLOW = "static_data_flow"
     CALL_CONTEXT = "call_context"
     SCHEMA = "schema"
+    FUNCTION_BEHAVIOR = "function_behavior"
 
 
 class EvidenceEffect(StrEnum):

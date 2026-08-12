@@ -13,9 +13,6 @@ from invariant_cli.analysis.model import (
     SemanticNodeKind,
     SemanticTerminalKind,
 )
-from invariant_cli.analysis.python.analyzer import convert_program
-from invariant_cli.matching.static.model import FunctionFlow
-from invariant_cli.matching.static.program import ProgramIndex
 
 DEFAULT_MAX_CALL_DEPTH = 2
 
@@ -37,6 +34,12 @@ class FieldFlowTrace:
 
 
 @dataclass(frozen=True)
+class ReturnContinuation:
+    caller_function_id: str
+    call_node_id: str
+
+
+@dataclass(frozen=True)
 class _WalkState:
     function_id: str
     node_id: str
@@ -45,17 +48,17 @@ class _WalkState:
     depth: int
     visited: frozenset[tuple[str, str]]
     resolution: ResolutionStatus
+    return_stack: tuple[ReturnContinuation, ...] = ()
 
 
 def trace_field_flows(
-    program_or_flows: ProgramSemanticModel | ProgramIndex | list[FunctionFlow],
+    model: ProgramSemanticModel,
     identifier: str,
     *,
     max_call_depth: int = DEFAULT_MAX_CALL_DEPTH,
 ) -> list[FieldFlowTrace]:
     if max_call_depth < 0:
         raise ValueError("max_call_depth cannot be negative.")
-    model = _semantic_model(program_or_flows)
     traces: set[FieldFlowTrace] = set()
 
     for function in _unique_functions(model):
@@ -129,6 +132,23 @@ def _trace_read(
         terminal = _terminal(node)
         if terminal is not None:
             terminal_kind, label = terminal
+            if terminal_kind == SemanticTerminalKind.RETURN and state.return_stack:
+                continuation = state.return_stack[-1]
+                caller = model.functions[continuation.caller_function_id]
+                continuation_key = (caller.id, continuation.call_node_id)
+                stack.append(
+                    _WalkState(
+                        function_id=caller.id,
+                        node_id=continuation.call_node_id,
+                        operations=state.operations,
+                        call_chain=state.call_chain,
+                        depth=max(state.depth - 1, 0),
+                        visited=state.visited | {continuation_key},
+                        resolution=state.resolution,
+                        return_stack=state.return_stack[:-1],
+                    )
+                )
+                continue
             traces.add(
                 _trace(
                     function,
@@ -247,6 +267,13 @@ def _trace_read(
                     depth=state.depth + 1,
                     visited=state.visited | {callee_key},
                     resolution=_combine_resolution(state.resolution, callee.resolution),
+                    return_stack=state.return_stack
+                    + (
+                        ReturnContinuation(
+                            caller_function_id=state.function_id,
+                            call_node_id=child.id,
+                        ),
+                    ),
                 )
             )
 
@@ -271,6 +298,7 @@ def _push_local(
             depth=state.depth,
             visited=state.visited | {key},
             resolution=state.resolution,
+            return_stack=state.return_stack,
         )
     )
 
@@ -325,15 +353,6 @@ def _trace(
         resolution=state.resolution if resolution is None else resolution,
         call_resolution=call_resolution,
     )
-
-
-def _semantic_model(
-    value: ProgramSemanticModel | ProgramIndex | list[FunctionFlow],
-) -> ProgramSemanticModel:
-    if isinstance(value, ProgramSemanticModel):
-        return value
-    program = value if isinstance(value, ProgramIndex) else ProgramIndex.from_flows(value)
-    return convert_program(program)
 
 
 def _adjacency(edges: list[SemanticEdge]) -> dict[str, list[SemanticEdge]]:

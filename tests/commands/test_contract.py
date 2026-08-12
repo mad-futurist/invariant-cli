@@ -134,7 +134,7 @@ def test_contract_infer_command(tmp_path: Path) -> None:
 
         data = yaml.safe_load(files[0].read_text(encoding="utf-8"))
 
-        assert data["version"] == 6
+        assert data["version"] == 7
         assert data["status"] == "candidate"
 
         assert len(data["paired_executions"]) == 3

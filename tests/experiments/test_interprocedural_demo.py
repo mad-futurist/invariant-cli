@@ -36,8 +36,8 @@ def _capture(demo: Path, app_path: str, amount: str) -> str:
 @pytest.mark.parametrize(
     ("target", "effect", "status"),
     [
-        ("target", "neutral", "well_supported_candidate"),
-        ("target_negative", "neutral", "well_supported_candidate"),
+        ("target", "supports", "well_supported_candidate"),
+        ("target_negative", "contradicts", "rejected"),
         ("target_unresolved", "neutral", "well_supported_candidate"),
     ],
 )

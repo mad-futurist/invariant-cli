@@ -8,6 +8,7 @@ from invariant_cli.contracts.model import (
     EntityExpression,
     ExecutionPairRef,
     ExpressionCorrespondenceCandidate,
+    FunctionCorrespondenceCandidate,
 )
 from invariant_cli.contracts.validation import ContractValidationResult
 from invariant_cli.evidence.model import (
@@ -140,6 +141,51 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                     EvidenceEdge(evidence, pair_id, EvidenceEdgeKind.DERIVED_FROM)
                     for pair_id in pair_ids
                 )
+
+    for function_candidate in contract.function_correspondences:
+        correspondence = function_correspondence_id(function_candidate)
+        source = entity_id(function_candidate.source)
+        target = entity_id(function_candidate.target)
+        nodes[source] = _entity_node(source, function_candidate.source)
+        nodes[target] = _entity_node(target, function_candidate.target)
+        nodes[correspondence] = EvidenceNode(
+            id=correspondence,
+            kind=EvidenceNodeKind.CORRESPONDENCE,
+            attributes={
+                "shape": "function",
+                "status": function_candidate.status.value,
+            },
+        )
+        edges.extend(
+            [
+                EvidenceEdge(correspondence, source, EvidenceEdgeKind.HAS_SOURCE),
+                EvidenceEdge(correspondence, target, EvidenceEdgeKind.HAS_TARGET),
+            ]
+        )
+        for index, item in enumerate(function_candidate.evidence):
+            evidence = function_evidence_id(
+                function_candidate, index, item.kind.value, item.producer
+            )
+            nodes[evidence] = EvidenceNode(
+                id=evidence,
+                kind=EvidenceNodeKind.EVIDENCE,
+                attributes={
+                    "kind": item.kind.value,
+                    "producer": item.producer,
+                    "family": item.family.value,
+                    "effect": item.effect.value,
+                    **item.attributes,
+                },
+            )
+            edges.append(EvidenceEdge(evidence, correspondence, _effect_edge(item.effect)))
+
+    for obligation in contract.obligations:
+        obligation_id = f"obligation:{obligation.id}"
+        nodes[obligation_id] = EvidenceNode(
+            id=obligation_id,
+            kind=EvidenceNodeKind.OBLIGATION,
+            attributes={"kind": obligation.kind.value, "rule": obligation.rule},
+        )
 
     for candidate_set in contract.candidate_sets:
         candidate_set_node = candidate_set_id(candidate_set)
@@ -308,6 +354,32 @@ def expression_correspondence_id(candidate: ExpressionCorrespondenceCandidate) -
                 "scale": candidate.relation.scale,
                 "offset": candidate.relation.offset,
             },
+        }
+    )
+
+
+def function_correspondence_id(candidate: FunctionCorrespondenceCandidate) -> str:
+    return "correspondence:" + _digest(
+        {
+            "shape": "function",
+            "source": entity_id(candidate.source),
+            "target": entity_id(candidate.target),
+        }
+    )
+
+
+def function_evidence_id(
+    candidate: FunctionCorrespondenceCandidate,
+    index: int,
+    kind: str,
+    producer: str,
+) -> str:
+    return "evidence:" + _digest(
+        {
+            "correspondence": function_correspondence_id(candidate),
+            "index": index,
+            "kind": kind,
+            "producer": producer,
         }
     )
 

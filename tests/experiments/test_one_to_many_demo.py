@@ -80,7 +80,7 @@ def test_one_to_many_demo_end_to_end(tmp_path: Path, monkeypatch: MonkeyPatch) -
 
     contract_file = next((demo / ".invariant" / "contracts").glob("*.candidate.yaml"))
     contract_data = yaml.safe_load(contract_file.read_text(encoding="utf-8"))
-    assert contract_data["version"] == 6
+    assert contract_data["version"] == 7
     assert contract_data["correspondences"] == []
     expression = contract_data["expression_correspondences"][0]
     assert expression["source"]["kind"] == "identity"

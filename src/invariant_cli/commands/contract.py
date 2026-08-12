@@ -4,21 +4,15 @@ import typer
 
 from invariant_cli.analysis.model import ProgramSemanticModel
 from invariant_cli.analysis.service import analyze_program
-from invariant_cli.contracts.enrichment import (
-    enrich_with_static_data_flow,
-    enrich_with_static_usage,
-)
-from invariant_cli.contracts.expression_inference import infer_expression_correspondences
+from invariant_cli.architecture.loader import load_architecture
 from invariant_cli.contracts.generation import InferenceLimits
-from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import (
-    CandidateTranslationContract,
     CorrespondenceCandidate,
     EntityExpression,
     ExecutionPairRef,
     ExpressionCorrespondenceCandidate,
 )
-from invariant_cli.contracts.ranking import build_candidate_sets, source_entities_from_pairs
+from invariant_cli.contracts.service import ContractInferenceService
 from invariant_cli.contracts.storage import (
     load_candidate_contract,
     save_candidate_contract,
@@ -27,7 +21,6 @@ from invariant_cli.contracts.storage import (
 from invariant_cli.contracts.validation import validate_candidate_contract
 from invariant_cli.execution.reader import load_execution_observations
 from invariant_cli.matching.model import EvidenceKind
-from invariant_cli.matching.static.semantic import extract_semantic_usage
 from invariant_cli.workspace.model import WorkspacePaths
 from invariant_cli.workspace.service import (
     get_workspace_paths,
@@ -72,6 +65,12 @@ TargetCodeOption = typer.Option(
     help="Python target file or directory used to add static program evidence.",
 )
 
+ArchitectureOption = typer.Option(
+    None,
+    "--architecture",
+    help="Target architecture YAML to include as verification obligations.",
+)
+
 
 MaxDirectTargetsOption = typer.Option(
     50,
@@ -95,6 +94,7 @@ def infer_contract(
     workspace_root: Path | None = WorkspaceRootOption,
     source_code: Path | None = SourceCodeOption,
     target_code: Path | None = TargetCodeOption,
+    architecture: Path | None = ArchitectureOption,
     max_direct_targets_per_source: int = MaxDirectTargetsOption,
     max_expression_pairs_per_source: int = MaxExpressionPairsOption,
 ) -> None:
@@ -147,41 +147,28 @@ def infer_contract(
         max_direct_targets_per_source=max_direct_targets_per_source,
         max_expression_pairs_per_source=max_expression_pairs_per_source,
     )
-    candidates = infer_correspondences(observation_pairs, limits=limits)
-    expression_candidates = infer_expression_correspondences(
-        observation_pairs,
-        limits=limits,
-    )
-
+    source_program = None
+    target_program = None
     if source_code is not None and target_code is not None:
         source_path = _python_path(source_code, label="source")
         target_path = _python_path(target_code, label="target")
         source_program = _extract_program(source_path, label="source")
         target_program = _extract_program(target_path, label="target")
-        candidates = enrich_with_static_usage(
-            candidates,
-            extract_semantic_usage(source_program),
-            extract_semantic_usage(target_program),
-        )
-        candidates = enrich_with_static_data_flow(
-            candidates,
-            source_program,
-            target_program,
-        )
-
-    candidate_sets = build_candidate_sets(
-        candidates,
-        expression_candidates,
-        sources=source_entities_from_pairs(observation_pairs),
+    architecture_model = (
+        None
+        if architecture is None
+        else load_architecture(_python_path(architecture, label="architecture"))
     )
-
-    contract = CandidateTranslationContract(
-        version=6,
-        paired_executions=pair_refs,
-        correspondences=candidates,
-        expression_correspondences=expression_candidates,
-        candidate_sets=candidate_sets,
+    contract = ContractInferenceService(limits).infer(
+        observation_pairs,
+        pair_refs,
+        source_program=source_program,
+        target_program=target_program,
+        architecture=architecture_model,
     )
+    candidates = contract.correspondences
+    expression_candidates = contract.expression_correspondences
+    candidate_sets = contract.candidate_sets
 
     output_path = save_candidate_contract(
         contract,
@@ -193,6 +180,7 @@ def infer_contract(
     typer.echo(f"Candidate correspondences: {len(candidates)}")
     typer.echo(f"Expression correspondences: {len(expression_candidates)}")
     typer.echo(f"Candidate sets: {len(candidate_sets)}")
+    typer.echo(f"Function correspondences: {len(contract.function_correspondences)}")
 
     if candidate_sets:
         typer.echo("")

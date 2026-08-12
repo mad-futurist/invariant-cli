@@ -34,7 +34,10 @@ class PythonSemanticAnalyzer:
             for source in files
             if (flow := extract_module_flow(source, module=_module_name(source, root))).nodes
         ]
-        program = ProgramIndex.from_flows([*program.functions.values(), *module_flows])
+        program = ProgramIndex.from_flows(
+            [*program.functions.values(), *module_flows],
+            aliases=program.aliases,
+        )
         return convert_program(program, path=path, analyzer=self.name)
 
 
