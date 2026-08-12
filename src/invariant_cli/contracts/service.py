@@ -13,6 +13,7 @@ from invariant_cli.contracts.function_inference import infer_function_correspond
 from invariant_cli.contracts.generation import InferenceLimits
 from invariant_cli.contracts.inference import infer_correspondences
 from invariant_cli.contracts.model import (
+    ArchitectureArtifactRef,
     CandidateTranslationContract,
     ExecutionPairRef,
     FunctionCorrespondenceStatus,
@@ -42,8 +43,6 @@ class ContractInferenceService:
             observation_pairs,
             limits=self.limits,
         )
-        function_candidates = []
-
         if source_program is not None and target_program is not None:
             candidates = enrich_with_static_usage(
                 candidates,
@@ -55,16 +54,19 @@ class ContractInferenceService:
                 source_program,
                 target_program,
             )
-            function_candidates = infer_function_correspondences(
-                source_program,
-                target_program,
-                candidates,
-            )
-
         candidate_sets = build_candidate_sets(
             candidates,
             expression_candidates,
             sources=source_entities_from_pairs(observation_pairs),
+        )
+        function_candidates = (
+            []
+            if source_program is None or target_program is None
+            else infer_function_correspondences(
+                source_program,
+                target_program,
+                candidate_sets,
+            )
         )
         behavior_obligations = [
             VerificationObligation(
@@ -94,4 +96,13 @@ class ContractInferenceService:
             candidate_sets=candidate_sets,
             function_correspondences=function_candidates,
             obligations=[*behavior_obligations, *architecture_obligations],
+            architecture=(
+                None
+                if architecture is None
+                else ArchitectureArtifactRef(
+                    path=architecture.artifact_path,
+                    version=architecture.version,
+                    sha256=architecture.sha256,
+                )
+            ),
         )

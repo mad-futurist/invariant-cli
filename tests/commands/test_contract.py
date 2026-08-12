@@ -190,7 +190,7 @@ def test_contract_infer_command(tmp_path: Path) -> None:
 
         assert data["candidate_sets"][0]["status"] == "well_supported_candidate"
         assert data["candidate_sets"][0]["candidates"][0]["rank"] == 1
-        assert data["evidence_graph"]["version"] == 5
+        assert data["evidence_graph"]["version"] == 6
 
     finally:
         os.chdir(original_cwd)

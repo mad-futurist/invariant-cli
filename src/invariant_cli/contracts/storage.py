@@ -5,6 +5,7 @@ from uuid import uuid4
 import yaml
 
 from invariant_cli.contracts.model import (
+    ArchitectureArtifactRef,
     CandidateHypothesis,
     CandidateSet,
     CandidateSetStatus,
@@ -25,7 +26,10 @@ from invariant_cli.contracts.model import (
 )
 from invariant_cli.contracts.validation import (
     ContractValidationResult,
+    CorrespondenceValidation,
     ExpressionComponentValidation,
+    ExpressionCorrespondenceValidation,
+    PairValidation,
     ValidationVerdict,
 )
 from invariant_cli.evidence.builder import (
@@ -44,7 +48,7 @@ from invariant_cli.matching.model import (
     EvidenceKind,
 )
 from invariant_cli.matching.transition import ObservedTransition
-from invariant_cli.observation.model import serialize_value
+from invariant_cli.observation.model import deserialize_value, serialize_value
 
 
 def save_candidate_contract(
@@ -157,6 +161,15 @@ def save_candidate_contract(
             }
             for obligation in contract.obligations
         ],
+        "architecture": (
+            None
+            if contract.architecture is None
+            else {
+                "path": contract.architecture.path,
+                "version": contract.architecture.version,
+                "sha256": contract.architecture.sha256,
+            }
+        ),
         "evidence_graph": evidence_graph_to_data(build_candidate_evidence_graph(contract)),
     }
 
@@ -303,6 +316,16 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
         )
         for entry in data.get("obligations", [])
     ]
+    architecture_data = data.get("architecture")
+    architecture = (
+        None
+        if not isinstance(architecture_data, dict)
+        else ArchitectureArtifactRef(
+            path=str(architecture_data["path"]),
+            version=int(architecture_data["version"]),
+            sha256=str(architecture_data["sha256"]),
+        )
+    )
 
     return CandidateTranslationContract(
         version=data["version"],
@@ -312,6 +335,7 @@ def load_candidate_contract(path: Path) -> CandidateTranslationContract:
         candidate_sets=candidate_sets,
         function_correspondences=function_correspondences,
         obligations=obligations,
+        architecture=architecture,
     )
 
 
@@ -396,10 +420,64 @@ def save_contract_validation(
 
 def load_contract_validation(path: Path) -> ContractValidationResult:
     data = json.loads(path.read_text(encoding="utf-8"))
+    pairs = [
+        PairValidation(
+            pair=ExecutionPairRef(
+                source_execution=str(item["source_execution"]),
+                target_execution=str(item["target_execution"]),
+            ),
+            verdict=ValidationVerdict(str(item["verdict"])),
+            correspondences=[
+                CorrespondenceValidation(
+                    source=_load_entity(entry["source"]),
+                    target=_load_entity(entry["target"]),
+                    verdict=ValidationVerdict(str(entry["verdict"])),
+                    source_transition=_load_transition(entry.get("source_transition")),
+                    target_transition=_load_transition(entry.get("target_transition")),
+                )
+                for entry in item.get("correspondences", [])
+            ],
+            expression_correspondences=[
+                ExpressionCorrespondenceValidation(
+                    source=_load_expression(entry["source"]),
+                    target=_load_expression(entry["target"]),
+                    verdict=ValidationVerdict(str(entry["verdict"])),
+                    source_transition=_load_transition(entry.get("source_transition")),
+                    target_transition=_load_transition(entry.get("target_transition")),
+                    source_components=_load_components(entry.get("source_components", [])),
+                    target_components=_load_components(entry.get("target_components", [])),
+                )
+                for entry in item.get("expression_correspondences", [])
+            ],
+        )
+        for item in data.get("pairs", [])
+    ]
     return ContractValidationResult(
         verdict=ValidationVerdict(str(data["verdict"])),
-        pairs=[],
+        pairs=pairs,
     )
+
+
+def _load_transition(raw: object) -> ObservedTransition | None:
+    if not isinstance(raw, dict):
+        return None
+    return ObservedTransition(
+        before=deserialize_value(raw.get("before")),
+        after=deserialize_value(raw.get("after")),
+    )
+
+
+def _load_components(raw: object) -> list[ExpressionComponentValidation]:
+    if not isinstance(raw, list):
+        return []
+    return [
+        ExpressionComponentValidation(
+            entity=_load_entity(item["entity"]),
+            transition=_load_transition(item.get("transition")),
+        )
+        for item in raw
+        if isinstance(item, dict) and isinstance(item.get("entity"), dict)
+    ]
 
 
 def _evidence_family(data: dict[str, object]) -> EvidenceFamily:

@@ -31,3 +31,5 @@ class ArchitectureModel:
     version: int
     components: tuple[Component, ...]
     obligations: tuple[ArchitectureObligation, ...]
+    artifact_path: str
+    sha256: str

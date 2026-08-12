@@ -7,22 +7,22 @@ from invariant_cli.analysis.model import (
     ResolutionStatus,
     SemanticNodeKind,
 )
-from invariant_cli.matching.model import EntityKind, EntityRef
+from invariant_cli.matching.model import EntityKind, EntityRef, LogicalStateIdentity
 from invariant_cli.matching.static.dataflow import trace_field_flows
 
 
 @dataclass(frozen=True)
 class FunctionEffect:
     kind: str
-    target: str
+    target: LogicalStateIdentity
     owner_function: str
 
 
 @dataclass(frozen=True)
 class FunctionBehaviorSignature:
     function: EntityRef
-    state_reads: tuple[str, ...]
-    state_writes: tuple[str, ...]
+    state_reads: tuple[LogicalStateIdentity, ...]
+    state_writes: tuple[LogicalStateIdentity, ...]
     operations: tuple[str, ...]
     calls: tuple[str, ...]
     effects: tuple[FunctionEffect, ...]
@@ -38,13 +38,13 @@ def build_function_signatures(
         nodes = model.function_nodes(function_id)
         direct_reads = sorted(
             {
-                _state_identifier(node.label)
+                LogicalStateIdentity.from_semantic_label(node.label)
                 for node in nodes
                 if node.kind == SemanticNodeKind.STATE_READ
             }
         )
         direct_writes = {
-            _state_identifier(node.label)
+            LogicalStateIdentity.from_semantic_label(node.label)
             for node in nodes
             if node.kind == SemanticNodeKind.STATE_WRITE
         }
@@ -56,11 +56,9 @@ def build_function_signatures(
         # otherwise complete state-flow signature.
         resolution = ResolutionStatus.RESOLVED
 
-        for identifier in direct_reads:
+        for state in direct_reads:
             traces = [
-                trace
-                for trace in trace_field_flows(model, identifier)
-                if trace.function == function_id
+                trace for trace in trace_field_flows(model, state) if trace.function == function_id
             ]
             for trace in traces:
                 operations.update(trace.operations)
@@ -69,7 +67,7 @@ def build_function_signatures(
                     effects.add(
                         FunctionEffect(
                             "state_write",
-                            _state_identifier(trace.terminal),
+                            LogicalStateIdentity.from_semantic_label(trace.terminal),
                             _terminal_owner(model, trace.call_chain, function_id),
                         )
                     )
@@ -104,10 +102,6 @@ def _terminal_owner(
     name = call_chain[-1]
     matches = [function.id for function in model.functions.values() if function.name == name]
     return matches[0] if len(matches) == 1 else fallback
-
-
-def _state_identifier(label: str) -> str:
-    return label.rsplit(".", 1)[-1]
 
 
 def _least_resolved(left: ResolutionStatus, right: ResolutionStatus) -> ResolutionStatus:

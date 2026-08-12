@@ -2,7 +2,7 @@ from dataclasses import replace
 
 from invariant_cli.analysis.model import ProgramSemanticModel
 from invariant_cli.contracts.model import CorrespondenceCandidate
-from invariant_cli.matching.model import EntityKind, EvidenceKind
+from invariant_cli.matching.model import EntityKind, EvidenceKind, LogicalStateIdentity
 from invariant_cli.matching.static.matcher import (
     CALL_CONTEXT_PRODUCER,
     DATA_FLOW_PRODUCER,
@@ -16,8 +16,8 @@ from invariant_cli.matching.static.model import FieldUsage
 
 def enrich_with_static_usage(
     candidates: list[CorrespondenceCandidate],
-    source_usage: dict[str, FieldUsage],
-    target_usage: dict[str, FieldUsage],
+    source_usage: dict[LogicalStateIdentity, FieldUsage],
+    target_usage: dict[LogicalStateIdentity, FieldUsage],
 ) -> list[CorrespondenceCandidate]:
     enriched: list[CorrespondenceCandidate] = []
 
@@ -29,8 +29,8 @@ def enrich_with_static_usage(
             enriched.append(candidate)
             continue
 
-        source = source_usage.get(candidate.source.identifier)
-        target = target_usage.get(candidate.target.identifier)
+        source = source_usage.get(candidate.source.logical_state)
+        target = target_usage.get(candidate.target.logical_state)
 
         if source is None or target is None:
             enriched.append(candidate)

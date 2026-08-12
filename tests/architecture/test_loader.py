@@ -45,3 +45,23 @@ rules:
 
     with pytest.raises(ValueError, match="unknown components"):
         load_architecture(path)
+
+
+def test_state_owner_requires_logical_owner_and_full_path(tmp_path: Path) -> None:
+    path = tmp_path / "invalid-state.yaml"
+    path.write_text(
+        """version: 1
+components:
+  - id: persistence
+    modules: [repository]
+rules:
+  - id: owner
+    kind: state_write_owner
+    component: persistence
+    state: [remaining_eur]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="logical owner and path"):
+        load_architecture(path)

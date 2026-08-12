@@ -96,7 +96,7 @@ def test_cross_representation_evidence_graph_end_to_end(
     }
 
     candidate_graph = contract_data["evidence_graph"]
-    assert candidate_graph["version"] == 5
+    assert candidate_graph["version"] == 6
     assert {node["kind"] for node in candidate_graph["nodes"]} == {
         "entity",
         "correspondence",

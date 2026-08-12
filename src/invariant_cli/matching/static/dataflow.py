@@ -13,6 +13,7 @@ from invariant_cli.analysis.model import (
     SemanticNodeKind,
     SemanticTerminalKind,
 )
+from invariant_cli.matching.model import LogicalStateIdentity
 
 DEFAULT_MAX_CALL_DEPTH = 2
 
@@ -53,7 +54,7 @@ class _WalkState:
 
 def trace_field_flows(
     model: ProgramSemanticModel,
-    identifier: str,
+    state: LogicalStateIdentity,
     *,
     max_call_depth: int = DEFAULT_MAX_CALL_DEPTH,
 ) -> list[FieldFlowTrace]:
@@ -65,8 +66,7 @@ def trace_field_flows(
         reads = [
             node
             for node in model.function_nodes(function.id)
-            if node.kind == SemanticNodeKind.STATE_READ
-            and _field_identifier(node.label) == _field_identifier(identifier)
+            if node.kind == SemanticNodeKind.STATE_READ and _state_identity(node.label) == state
         ]
         for read in reads:
             traces.update(_trace_read(model, function, read, max_call_depth=max_call_depth))
@@ -397,5 +397,5 @@ def _trace_key(trace: FieldFlowTrace) -> tuple[object, ...]:
     )
 
 
-def _field_identifier(label: str) -> str:
-    return label.rsplit(".", 1)[-1]
+def _state_identity(label: str) -> LogicalStateIdentity:
+    return LogicalStateIdentity.from_semantic_label(label)

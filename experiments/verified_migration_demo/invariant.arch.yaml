@@ -13,7 +13,7 @@ rules:
   - id: persistence-owns-account
     kind: state_write_owner
     component: persistence
-    state: [remaining_eur]
+    state: [account.remaining_eur]
   - id: payment-must-use-persistence
     kind: require_dependency
     from: payment-service

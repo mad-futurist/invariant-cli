@@ -2,7 +2,14 @@ from pathlib import Path
 
 from invariant_cli.analysis.model import ProgramSemanticModel
 from invariant_cli.analysis.python.analyzer import PythonSemanticAnalyzer
-from invariant_cli.matching.model import EntityKind, EntityRef, EvidenceEffect, EvidenceKind
+from invariant_cli.matching.model import (
+    EntityKind,
+    EntityRef,
+    EvidenceEffect,
+    EvidenceKind,
+    LogicalStateIdentity,
+)
+from invariant_cli.matching.static.dataflow import trace_field_flows
 from invariant_cli.matching.static.matcher import (
     build_call_context_evidence,
     build_static_data_flow_evidence,
@@ -259,3 +266,24 @@ def process(value):
     assert target_attributes["call_chain"] == ["process", "compute", "store"]
     assert source_attributes["terminal_kind"] == "state_write"
     assert target_attributes["terminal_kind"] == "state_write"
+
+
+def test_dataflow_state_identity_includes_logical_owner(tmp_path: Path) -> None:
+    model = _flows(
+        tmp_path,
+        "owners.py",
+        """
+def update_state(value):
+    current = state["balance"]
+    state["balance"] = current - value
+
+def update_invoice(value):
+    current = invoice["balance"]
+    invoice["balance"] = current + value
+""",
+    )
+
+    traces = trace_field_flows(model, LogicalStateIdentity("state", "balance"))
+
+    assert {trace.function for trace in traces} == {"owners.update_state"}
+    assert {trace.operations for trace in traces} == {("subtract",)}

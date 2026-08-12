@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import yaml
@@ -8,10 +9,12 @@ from invariant_cli.architecture.model import (
     Component,
     ObligationKind,
 )
+from invariant_cli.matching.model import LogicalStateIdentity
 
 
 def load_architecture(path: Path) -> ArchitectureModel:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    content = path.read_bytes()
+    raw = yaml.safe_load(content.decode("utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("Architecture artifact must be a mapping.")
     version = int(raw.get("version", 0))
@@ -27,7 +30,13 @@ def load_architecture(path: Path) -> ArchitectureModel:
     if len({item.id for item in obligations}) != len(obligations):
         raise ValueError("Architecture rule ids must be unique.")
     _validate_components(obligations, component_ids)
-    return ArchitectureModel(version=version, components=components, obligations=obligations)
+    return ArchitectureModel(
+        version=version,
+        components=components,
+        obligations=obligations,
+        artifact_path=path.as_posix(),
+        sha256=hashlib.sha256(content).hexdigest(),
+    )
 
 
 def _component(raw: object) -> Component:
@@ -75,3 +84,9 @@ def _validate_components(
             raise ValueError(
                 f"Rule '{obligation.id}' references unknown components: {sorted(missing)}."
             )
+        if obligation.kind == ObligationKind.STATE_WRITE_OWNER:
+            states = obligation.parameters.get("state")
+            if not isinstance(states, list) or not states:
+                raise ValueError(f"Rule '{obligation.id}' requires a non-empty state list.")
+            for state in states:
+                LogicalStateIdentity.from_semantic_label(str(state))

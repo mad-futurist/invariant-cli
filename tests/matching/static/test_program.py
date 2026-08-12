@@ -6,6 +6,7 @@ from invariant_cli.analysis.model import (
     SemanticTerminalKind,
 )
 from invariant_cli.analysis.python.analyzer import convert_program
+from invariant_cli.matching.model import LogicalStateIdentity
 from invariant_cli.matching.static.dataflow import trace_field_flows
 from invariant_cli.matching.static.program import build_program_index, python_files
 
@@ -45,7 +46,9 @@ class AccountRepository:
     assert program.resolve("repository.store").kind == CallResolutionKind.HEURISTIC
     trace = next(
         item
-        for item in trace_field_flows(convert_program(program), "balance_cents")
+        for item in trace_field_flows(
+            convert_program(program), LogicalStateIdentity("state", "balance_cents")
+        )
         if item.function == "service.pay"
     )
     assert trace.operations == ("subtract",)
@@ -74,7 +77,11 @@ def second(value):
 
     trace = next(
         item
-        for item in trace_field_flows(convert_program(program), "balance", max_call_depth=1)
+        for item in trace_field_flows(
+            convert_program(program),
+            LogicalStateIdentity("state", "balance"),
+            max_call_depth=1,
+        )
         if item.function == "chain.start"
     )
 

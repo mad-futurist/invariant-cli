@@ -216,7 +216,7 @@ def build_candidate_evidence_graph(contract: CandidateTranslationContract) -> Ev
                 )
             )
 
-    return _graph(nodes, edges, version=5 if contract.candidate_sets else 3)
+    return _graph(nodes, edges, version=6)
 
 
 def build_validation_evidence_graph(

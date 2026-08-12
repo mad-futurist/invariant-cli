@@ -6,6 +6,7 @@ from invariant_cli.matching.model import (
     Evidence,
     EvidenceFamily,
     EvidenceKind,
+    LogicalStateIdentity,
 )
 from invariant_cli.matching.static.model import FieldUsage, UsageOperation
 
@@ -40,7 +41,7 @@ def test_adds_static_usage_to_dynamic_candidate() -> None:
     result = enrich_with_static_usage(
         [candidate()],
         {
-            "balance_cents": FieldUsage(
+            LogicalStateIdentity("state", "balance_cents"): FieldUsage(
                 identifier="balance_cents",
                 operations={
                     UsageOperation.READ,
@@ -50,7 +51,7 @@ def test_adds_static_usage_to_dynamic_candidate() -> None:
             )
         },
         {
-            "remaining": FieldUsage(
+            LogicalStateIdentity("account", "remaining"): FieldUsage(
                 identifier="remaining",
                 operations={
                     UsageOperation.READ,
@@ -80,13 +81,13 @@ def test_keeps_candidate_without_static_evidence_when_usage_does_not_overlap() -
     result = enrich_with_static_usage(
         [original],
         {
-            "balance_cents": FieldUsage(
+            LogicalStateIdentity("state", "balance_cents"): FieldUsage(
                 identifier="balance_cents",
                 operations={UsageOperation.READ},
             )
         },
         {
-            "remaining": FieldUsage(
+            LogicalStateIdentity("account", "remaining"): FieldUsage(
                 identifier="remaining",
                 operations={UsageOperation.WRITE},
             )

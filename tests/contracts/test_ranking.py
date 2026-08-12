@@ -10,6 +10,7 @@ from invariant_cli.matching.model import (
     EvidenceEffect,
     EvidenceFamily,
     EvidenceKind,
+    LogicalStateIdentity,
 )
 from invariant_cli.matching.static.model import FieldUsage, UsageOperation
 from invariant_cli.observation.model import Observation, ValueChange
@@ -54,17 +55,17 @@ def test_static_evidence_deterministically_ranks_without_dropping_alternative() 
     candidates = enrich_with_static_usage(
         infer_correspondences(_pairs()),
         {
-            "balance": FieldUsage(
+            LogicalStateIdentity("state", "balance"): FieldUsage(
                 "balance",
                 {UsageOperation.READ, UsageOperation.WRITE, UsageOperation.SUBTRACT},
             )
         },
         {
-            "remaining": FieldUsage(
+            LogicalStateIdentity("account", "remaining"): FieldUsage(
                 "remaining",
                 {UsageOperation.READ, UsageOperation.WRITE, UsageOperation.SUBTRACT},
             ),
-            "total": FieldUsage("total", {UsageOperation.READ}),
+            LogicalStateIdentity("account", "total"): FieldUsage("total", {UsageOperation.READ}),
         },
     )
 

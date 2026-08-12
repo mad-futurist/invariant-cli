@@ -5,11 +5,14 @@ from invariant_cli.analysis.model import (
     SemanticNode,
     SemanticNodeKind,
 )
+from invariant_cli.matching.model import LogicalStateIdentity
 from invariant_cli.matching.static.model import FieldUsage, UsageOperation
 
 
-def extract_semantic_usage(model: ProgramSemanticModel) -> dict[str, FieldUsage]:
-    operations: dict[str, set[UsageOperation]] = {}
+def extract_semantic_usage(
+    model: ProgramSemanticModel,
+) -> dict[LogicalStateIdentity, FieldUsage]:
+    operations: dict[LogicalStateIdentity, set[UsageOperation]] = {}
     nodes = {node.id: node for node in model.nodes}
     adjacency: dict[str, list[str]] = {}
     for edge in model.edges:
@@ -17,16 +20,16 @@ def extract_semantic_usage(model: ProgramSemanticModel) -> dict[str, FieldUsage]
 
     for node in model.nodes:
         if node.kind == SemanticNodeKind.STATE_READ:
-            identifier = _field_identifier(node.label)
-            operations.setdefault(identifier, set()).add(UsageOperation.READ)
-            operations[identifier].update(_reachable_operations(node, nodes, adjacency))
+            state = LogicalStateIdentity.from_semantic_label(node.label)
+            operations.setdefault(state, set()).add(UsageOperation.READ)
+            operations[state].update(_reachable_operations(node, nodes, adjacency))
         elif node.kind == SemanticNodeKind.STATE_WRITE:
-            identifier = _field_identifier(node.label)
-            operations.setdefault(identifier, set()).add(UsageOperation.WRITE)
+            state = LogicalStateIdentity.from_semantic_label(node.label)
+            operations.setdefault(state, set()).add(UsageOperation.WRITE)
 
     return {
-        identifier: FieldUsage(identifier, field_operations)
-        for identifier, field_operations in sorted(operations.items())
+        state: FieldUsage(state.locator, field_operations)
+        for state, field_operations in sorted(operations.items())
     }
 
 
@@ -51,7 +54,3 @@ def _reachable_operations(
                 found.add(UsageOperation(node.label))
         stack.extend(adjacency.get(node_id, []))
     return found
-
-
-def _field_identifier(label: str) -> str:
-    return label.rsplit(".", 1)[-1]

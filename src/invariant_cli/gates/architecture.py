@@ -9,6 +9,58 @@ from invariant_cli.analysis.model import (
 from invariant_cli.architecture.model import ArchitectureObligation, ObligationKind
 from invariant_cli.architecture.resolver import component_for_module
 from invariant_cli.gates.model import GateResult, GateVerdict, VerificationContext
+from invariant_cli.matching.model import LogicalStateIdentity
+
+
+@dataclass(frozen=True)
+class ArchitectureBindingGate:
+    id: str = "architecture-artifact-binding"
+
+    def evaluate(self, context: VerificationContext) -> GateResult:
+        expected = context.contract.architecture
+        actual = context.architecture
+        if expected is None:
+            return GateResult(
+                gate_id=self.id,
+                verdict=GateVerdict.INCONCLUSIVE,
+                obligation_id=self.id,
+                message="Contract is not bound to an architecture artifact.",
+                category="architecture",
+            )
+        if actual is None:
+            return GateResult(
+                gate_id=self.id,
+                verdict=GateVerdict.INCONCLUSIVE,
+                obligation_id=self.id,
+                message="Bound architecture artifact was not supplied.",
+                category="architecture",
+            )
+        if expected.version != actual.version or expected.sha256 != actual.sha256:
+            return GateResult(
+                gate_id=self.id,
+                verdict=GateVerdict.INCONCLUSIVE,
+                obligation_id=self.id,
+                evidence=[
+                    {
+                        "expected_version": expected.version,
+                        "actual_version": actual.version,
+                        "expected_sha256": expected.sha256,
+                        "actual_sha256": actual.sha256,
+                    }
+                ],
+                message="Architecture artifact changed after contract inference.",
+                category="architecture",
+            )
+        return GateResult(
+            gate_id=self.id,
+            verdict=GateVerdict.PASS,
+            obligation_id=self.id,
+            evidence=[
+                {"path": expected.path, "version": expected.version, "sha256": expected.sha256}
+            ],
+            message="Architecture artifact version and hash match the contract.",
+            category="architecture",
+        )
 
 
 @dataclass(frozen=True)
@@ -57,12 +109,17 @@ class ArchitectureGate:
     def _state_write_owner(self, context: VerificationContext) -> GateResult:
         owner = str(self.obligation.parameters["component"])
         raw_states = self.obligation.parameters.get("state", [])
-        states = {str(item) for item in raw_states} if isinstance(raw_states, list) else set()
+        states = (
+            {LogicalStateIdentity.from_semantic_label(str(item)) for item in raw_states}
+            if isinstance(raw_states, list)
+            else set()
+        )
         writes = [
             (function, node)
             for function in context.target_program.functions.values()
             for node in context.target_program.function_nodes(function.id)
-            if node.kind == SemanticNodeKind.STATE_WRITE and _identifier(node.label) in states
+            if node.kind == SemanticNodeKind.STATE_WRITE
+            and LogicalStateIdentity.from_semantic_label(node.label) in states
         ]
         if not writes:
             return _result(
@@ -126,10 +183,15 @@ class ArchitectureGate:
         )
 
 
-def architecture_gates(context: VerificationContext) -> list[ArchitectureGate]:
-    if context.architecture is None:
+def architecture_gates(
+    context: VerificationContext,
+) -> list[ArchitectureBindingGate | ArchitectureGate]:
+    if context.architecture is None and context.contract.architecture is None:
         return []
-    return [ArchitectureGate(obligation) for obligation in context.architecture.obligations]
+    binding = ArchitectureBindingGate()
+    if binding.evaluate(context).verdict != GateVerdict.PASS or context.architecture is None:
+        return [binding]
+    return [binding, *(ArchitectureGate(item) for item in context.architecture.obligations)]
 
 
 def _component_id(context: VerificationContext, module: str) -> str | None:
@@ -137,10 +199,6 @@ def _component_id(context: VerificationContext, module: str) -> str | None:
         return None
     component = component_for_module(context.architecture, module)
     return None if component is None else component.id
-
-
-def _identifier(label: str) -> str:
-    return label.rsplit(".", 1)[-1]
 
 
 def _result(

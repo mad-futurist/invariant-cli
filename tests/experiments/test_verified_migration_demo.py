@@ -6,13 +6,24 @@ from invariant_cli.analysis.service import analyze_program
 from invariant_cli.architecture.loader import load_architecture
 from invariant_cli.contracts.function_inference import infer_function_correspondences
 from invariant_cli.contracts.model import (
+    ArchitectureArtifactRef,
+    CandidateSet,
+    CandidateSetStatus,
+    CandidateShape,
     CandidateTranslationContract,
     CorrespondenceCandidate,
+    ExecutionPairRef,
     FunctionCorrespondenceStatus,
+    RankedCandidate,
     Relation,
     RelationKind,
 )
-from invariant_cli.contracts.validation import ContractValidationResult, ValidationVerdict
+from invariant_cli.contracts.validation import (
+    ContractValidationResult,
+    CorrespondenceValidation,
+    PairValidation,
+    ValidationVerdict,
+)
 from invariant_cli.gates.architecture import architecture_gates
 from invariant_cli.gates.behavior import BehaviorPreservationGate
 from invariant_cli.gates.engine import aggregate_verdict, run_gates
@@ -35,21 +46,51 @@ def _context(target: str, validation: ValidationVerdict) -> VerificationContext:
     )
     source_program = analyze_program(ROOT / "source")
     target_program = analyze_program(ROOT / target)
+    candidate_sets = [
+        CandidateSet(
+            source=source_field,
+            status=CandidateSetStatus.WELL_SUPPORTED_CANDIDATE,
+            candidates=[RankedCandidate(CandidateShape.FIELD, 1, 100, {}, field_candidate)],
+        )
+    ]
     function_candidates = infer_function_correspondences(
-        source_program, target_program, [field_candidate]
+        source_program, target_program, candidate_sets
     )
+    architecture = load_architecture(ROOT / "invariant.arch.yaml")
     contract = CandidateTranslationContract(
         version=7,
         paired_executions=[],
         correspondences=[field_candidate],
+        candidate_sets=candidate_sets,
         function_correspondences=function_candidates,
+        architecture=ArchitectureArtifactRef(
+            architecture.artifact_path, architecture.version, architecture.sha256
+        ),
     )
     return VerificationContext(
         contract=contract,
         source_program=source_program,
         target_program=target_program,
-        architecture=load_architecture(ROOT / "invariant.arch.yaml"),
-        validation=ContractValidationResult(validation, []),
+        architecture=architecture,
+        validation=ContractValidationResult(
+            validation,
+            [
+                PairValidation(
+                    pair=ExecutionPairRef("held-out-source", "held-out-target"),
+                    verdict=validation,
+                    correspondences=[
+                        CorrespondenceValidation(
+                            source_field,
+                            target_field,
+                            validation,
+                            None,
+                            None,
+                        )
+                    ],
+                    expression_correspondences=[],
+                )
+            ],
+        ),
     )
 
 

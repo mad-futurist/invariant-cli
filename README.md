@@ -75,6 +75,10 @@ Invariant can:
 - add simple Python AST usage evidence to dynamic candidates;
 - build bounded local def-use graphs and compare field-to-computation-to-call behavior;
 - continue argument flow through uniquely resolved local functions and methods, up to two calls;
+- resume semantic flow from a resolved callee return into its caller;
+- infer function-level candidates from selected state mappings without discarding ambiguity;
+- compare function reads, writes, operations, and effects, including forbidden extra writes;
+- verify a minimal target-architecture artifact with independent deterministic gates;
 - distinguish supporting, contradicting, and neutral evidence;
 - block type-incompatible field pairs and bound direct and expression candidate generation;
 - attach observed JSON/SQLite schema evidence to surviving hypotheses;
@@ -226,15 +230,17 @@ JSON/SQLite transitions. It does not yet read declared JSON Schema or SQLite DDL
 
 Candidate contracts are saved under `.invariant/contracts/`.
 
-Every saved candidate also contains `evidence_graph` version 5. It is an inspectable graph, not a
+Every saved candidate also contains `evidence_graph` version 6. It is an inspectable graph, not a
 confidence score. Its nodes represent entities, proposed correspondences, relations, evidence items,
-expressions, candidate sets, and paired training executions. Edges say which entity or expression is the source or
+expressions, candidate sets, function correspondences, obligations, and paired training executions. Edges say which entity or expression is the source or
 target, which entities form an expression, which relation a candidate uses, which evidence supports
 or contradicts it, which ranked alternatives belong to a source candidate set, and which execution pairs produced dynamic evidence. Stable content-based IDs make the graph
 deterministic even though the contract file itself receives a new UUID.
 
-Contract format v6 keeps ordinary field-to-field candidates under `correspondences`, expression
-hypotheses under `expression_correspondences`, and adds first-class `candidate_sets`. The flat lists
+Contract format v7 keeps ordinary field-to-field candidates under `correspondences`, expression
+hypotheses under `expression_correspondences`, and first-class `candidate_sets`. It also stores
+function correspondences, verification obligations, and the version/SHA-256 binding of the target
+architecture artifact. The flat lists
 remain the executable validation projection; each candidate set groups both shapes under one source,
 stores deterministic rank factors, and has one of these statuses:
 
@@ -288,6 +294,24 @@ A failed relation produces `FAIL`. Missing observations produce `INCONCLUSIVE`. 
 stored under `.invariant/results/`. Their Evidence Graph extends the candidate graph with held-out
 validation-pair and validation nodes, including `validates` links back to the correspondence under test.
 
+### 6. Run behavior and architecture gates
+
+Pass the same architecture artifact used during inference. Its version and SHA-256 must match the
+binding stored in the contract; a changed artifact produces `INCONCLUSIVE` instead of silently
+checking a different rule set.
+
+```bash
+uv run invariant gate run CONTRACT_FILE \
+  --source-code path/to/source \
+  --target-code path/to/target \
+  --architecture invariant.arch.yaml \
+  --validation .invariant/results/VALIDATION.contract-validation.json
+```
+
+Behavior gates consume only held-out state validation relevant to the mapped states of that
+function. Architecture v1 supports forbidden direct state writes, full logical-state ownership such
+as `account.remaining_eur`, and required component dependencies.
+
 ## Experiments
 
 The `experiments/` directory contains intentionally small applications:
@@ -303,7 +327,9 @@ The `experiments/` directory contains intentionally small applications:
   correlated target where the candidate field flows into an unresolved logging call, demonstrating
   conservative neutral evidence.
 - `interprocedural_demo` demonstrates that imported-function and receiver-method suffix matches are
-  retained as heuristic neutral evidence instead of creating false support or contradiction.
+  resolved exactly when supported, while unresolved calls remain conservative.
+- `verified_migration_demo` separates a good target, a behaviorally correct architecture violation,
+  and an architecturally correct behavioral violation.
 
 These demos are test beds for one idea at a time. Experimental code stays outside the main package until its behavior and interface are understood.
 
@@ -317,18 +343,19 @@ Invariant does not yet understand a whole software system.
 - Relation inference supports exact and affine numeric transformations only.
 - Expression inference currently supports one source component and exactly two summed target components.
 - Candidate generation uses fixed configurable bounds; a bound that is too small can exclude a valid hypothesis and must be reported as an inference assumption.
-- Python program analysis is deliberately narrow. It exactly resolves module-local functions and
-  follows at most two calls. Imported functions and receiver methods remain heuristic until import
-  and type resolution exists. It does not resolve closures, decorators, reflection, dynamic
+- Python program analysis is deliberately narrow. It resolves module-local functions, explicit
+  imported functions, and simple module-level repository instances, and follows at most two calls.
+  It does not resolve closures, decorators, reflection, dynamic
   attributes, async behavior, inheritance, polymorphism, or general aliases.
-- Return values do not yet flow back into callers, and calls are not classified as persistence,
-  logging, or other semantic roles.
+- Calls are classified by observed state effects rather than names; general semantic roles are not
+  inferred yet.
 - Static usage enriches existing dynamic candidates; it does not create correspondences by itself.
 - Observed schema evidence does not yet inspect declared JSON Schema, SQLite DDL, foreign keys, or indexes.
 - Candidate scores are deterministic ordering factors, not calibrated probabilities or confidence scores.
-- Evidence Graph v5 is embedded in saved artifacts and is not yet queryable through a CLI command.
+- Evidence Graph v6 is embedded in saved artifacts and is not yet queryable through a CLI command.
 - Dynamic evidence currently points to paired executions as a whole; it does not yet store individual observed-transition nodes.
-- There is no target-architecture model, implementation generator, or production gate system yet.
+- The target-architecture model and gates are intentionally bounded v1 experiments; there is no
+  automatic component recovery, general architecture DSL, or implementation generator.
 
 These limits are intentional. Each feature should first prove itself in a controlled experiment and produce deterministic, inspectable evidence.
 
@@ -359,7 +386,7 @@ src/invariant_cli/
   matching/       entities, transitions, and evidence producers
   evidence/       Evidence Graph model and deterministic graph builders
   contracts/      inference, storage, enrichment, and validation
-  gates/          future independent verification gates
+  gates/          independent behavior, state, and architecture verification gates
 ```
 
 ## Where this is going
@@ -368,10 +395,10 @@ The long-term problem is larger than comparing two files or translating code lin
 
 > Which parts of two systems correspond, what relationship connects them, which behavior must remain stable, and does the new implementation belong in the target architecture?
 
-The contract model now handles pairwise and a first one-to-many relation. Candidate Sets and
-Evidence Graph v5 keep ambiguity, contradictions, evidence families, and unresolved context visible
-without deleting alternatives. The next semantic milestone is return flow through the neutral IR,
-followed by explicit call roles and function-level correspondence.
+The contract model now handles pairwise and a first one-to-many relation, function candidates,
+verification obligations, and architecture artifact binding. Candidate Sets and Evidence Graph v6
+keep ambiguity, contradictions, evidence families, and unresolved context visible without deleting
+alternatives.
 
 ## License
 

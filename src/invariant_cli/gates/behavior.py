@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 
 from invariant_cli.contracts.function_inference import infer_function_correspondences
-from invariant_cli.contracts.model import FunctionCorrespondenceStatus
-from invariant_cli.contracts.validation import ValidationVerdict
+from invariant_cli.contracts.model import (
+    FunctionCorrespondenceCandidate,
+    FunctionCorrespondenceStatus,
+)
+from invariant_cli.contracts.validation import ContractValidationResult, ValidationVerdict
 from invariant_cli.gates.model import GateResult, GateVerdict, VerificationContext
 from invariant_cli.matching.model import EvidenceEffect
 
@@ -18,7 +21,7 @@ class BehaviorPreservationGate:
         current_candidates = infer_function_correspondences(
             context.source_program,
             context.target_program,
-            context.contract.correspondences,
+            context.contract.candidate_sets,
         )
         candidate = next(
             (
@@ -57,9 +60,10 @@ class BehaviorPreservationGate:
                 "Held-out state validation was not supplied.",
                 candidate,
             )
-        if context.validation.verdict == ValidationVerdict.FAIL:
+        runtime_verdict = _mapped_validation_verdict(context.validation, candidate)
+        if runtime_verdict == ValidationVerdict.FAIL:
             return self._result(GateVerdict.FAIL, "Held-out state relation failed.", candidate)
-        if context.validation.verdict == ValidationVerdict.INCONCLUSIVE:
+        if runtime_verdict == ValidationVerdict.INCONCLUSIVE:
             return self._result(
                 GateVerdict.INCONCLUSIVE,
                 "Held-out state relation is inconclusive.",
@@ -88,6 +92,26 @@ class BehaviorPreservationGate:
             message=message,
             category="behavior",
         )
+
+
+def _mapped_validation_verdict(
+    validation: ContractValidationResult,
+    candidate: FunctionCorrespondenceCandidate,
+) -> ValidationVerdict:
+    relevant = set(candidate.mapped_state_reads) | set(candidate.mapped_state_writes)
+    if not relevant or not validation.pairs:
+        return ValidationVerdict.INCONCLUSIVE
+
+    verdicts: list[ValidationVerdict] = []
+    for pair in validation.pairs:
+        by_mapping = {(item.source, item.target): item.verdict for item in pair.correspondences}
+        for mapping in relevant:
+            verdicts.append(by_mapping.get(mapping, ValidationVerdict.INCONCLUSIVE))
+    if any(verdict == ValidationVerdict.FAIL for verdict in verdicts):
+        return ValidationVerdict.FAIL
+    if not verdicts or any(verdict == ValidationVerdict.INCONCLUSIVE for verdict in verdicts):
+        return ValidationVerdict.INCONCLUSIVE
+    return ValidationVerdict.PASS
 
 
 @dataclass(frozen=True)

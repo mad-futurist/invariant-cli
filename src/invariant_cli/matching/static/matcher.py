@@ -123,8 +123,8 @@ def _match_field_traces(
     *,
     compatible: Callable[[FieldFlowTrace, FieldFlowTrace], bool],
 ) -> tuple[EvidenceEffect, FieldFlowTrace, FieldFlowTrace, str] | None:
-    source_traces = trace_field_flows(source_program, source_entity.identifier)
-    target_traces = trace_field_flows(target_program, target_entity.identifier)
+    source_traces = trace_field_flows(source_program, source_entity.logical_state)
+    target_traces = trace_field_flows(target_program, target_entity.logical_state)
     source_chain = strongest_trace([trace for trace in source_traces if is_behavior_chain(trace)])
     if source_chain is None or not target_traces:
         return None

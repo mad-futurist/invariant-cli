@@ -122,6 +122,13 @@ class VerificationObligation:
 
 
 @dataclass(frozen=True)
+class ArchitectureArtifactRef:
+    path: str
+    version: int
+    sha256: str
+
+
+@dataclass(frozen=True)
 class CandidateTranslationContract:
     version: int
     paired_executions: list[ExecutionPairRef]
@@ -132,3 +139,4 @@ class CandidateTranslationContract:
     candidate_sets: list[CandidateSet] = field(default_factory=list)
     function_correspondences: list[FunctionCorrespondenceCandidate] = field(default_factory=list)
     obligations: list[VerificationObligation] = field(default_factory=list)
+    architecture: ArchitectureArtifactRef | None = None
