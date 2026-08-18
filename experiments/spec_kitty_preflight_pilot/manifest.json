@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "https://github.com/Priivacy-ai/spec-kitty.git"
+  },
+  "mission": {
+    "feature": "017-smarter-feature-merge-with-preflight",
+    "work_package": "WP02",
+    "expected_work_packages": [
+      "WP01",
+      "WP02",
+      "WP03",
+      "WP04",
+      "WP05",
+      "WP06"
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "kitty-specs/017-smarter-feature-merge-with-preflight/spec.md",
+      "ref": "6985680ee5ef3b5f512cd2189d4fb8575420a571",
+      "git_blob_sha1": "9df049e39581d23f44c87a5fe44e76eb8236cab3"
+    },
+    {
+      "path": "kitty-specs/017-smarter-feature-merge-with-preflight/tasks/WP02-preflight-validation.md",
+      "ref": "6985680ee5ef3b5f512cd2189d4fb8575420a571",
+      "git_blob_sha1": "6deb05103d1b2c487f608750700f0343c6c6c097"
+    }
+  ],
+  "candidates": {
+    "bad": {
+      "directory": "spec-kitty-bad",
+      "sha": "0222ed3a837a6b3e1d73cd626fb0f8cf02e5e1a3",
+      "environment": {
+        "SPEC_KITTY_CLI_VERSION": "0.11.0"
+      }
+    },
+    "fixed": {
+      "directory": "spec-kitty-fixed",
+      "sha": "6985680ee5ef3b5f512cd2189d4fb8575420a571",
+      "environment": {
+        "SPEC_KITTY_CLI_VERSION": "0.11.0"
+      }
+    }
+  },
+  "assumptions": {
+    "fr_004_mutation_scope": [
+      "HEAD",
+      "refs/heads/*",
+      "worktrees"
+    ],
+    "excluded_from_fr_004": [
+      "refs/remotes/*"
+    ]
+  }
+}

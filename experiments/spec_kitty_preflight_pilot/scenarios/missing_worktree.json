@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "missing_worktree",
+  "current_work_package": "WP01",
+  "dirty_work_packages": [],
+  "missing_work_packages": [
+    "WP03"
+  ],
+  "requirements": [
+    "FR-001",
+    "FR-003",
+    "FR-004"
+  ]
+}
