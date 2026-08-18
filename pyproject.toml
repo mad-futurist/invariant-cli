@@ -47,6 +47,9 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "external_corpus: runs against an explicitly configured external historical corpus",
+]
 addopts = [
     "-ra",
     "--strict-config",

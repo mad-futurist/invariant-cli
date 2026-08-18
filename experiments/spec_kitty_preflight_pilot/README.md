@@ -1,10 +1,11 @@
-# Spec Kitty pre-flight verification pilot (M1)
+# Spec Kitty pre-flight verification pilot (Verification Core)
 
 This experiment reproduces the two review defects from Spec Kitty Feature 017 / WP02 without
 modifying the Spec Kitty product repository. Invariant owns the harness; two external, detached
 candidate checkouts provide the historical corpus. M1 compiles the pinned Markdown requirements
 into typed Invariant specification IR and captures execution through `CaptureService` plus the
-generic `GitStateProbe`.
+generic `GitStateProbe`. The Verification Core milestone adds a typed, human-approved FR-003
+obligation and evaluates it through the generic `VerificationPlan` / `VerificationEngine` path.
 
 The pinned candidates are:
 
@@ -66,12 +67,12 @@ and after execution. Unexpected candidate changes are never silently cleaned.
 
 The pinned corpus was validated with this matrix:
 
-| Candidate | Scenario | Observed result |
-| --- | --- | --- |
-| bad | `multiple_dirty` | exit 1 in the legacy current-worktree check; pre-flight never runs |
-| fixed | `multiple_dirty` | exit 1 after pre-flight reports both dirty WP01 and WP03 |
-| bad | `missing_worktree` | exit 0; pre-flight passes without noticing missing WP03 |
-| fixed | `missing_worktree` | exit 1; pre-flight reports `Missing worktree for WP03` |
+| Candidate | Scenario | Observed result | Invariant verdict |
+| --- | --- | --- | --- |
+| bad | `multiple_dirty` | legacy check reports only WP01 | `FAIL` (WP03 missing) |
+| fixed | `multiple_dirty` | pre-flight reports WP01 and WP03 | `PASS` |
+| bad | `missing_worktree` | exit 0; missing WP03 is invisible | `FAIL` (WP03 missing) |
+| fixed | `missing_worktree` | pre-flight reports missing WP03 | `PASS` |
 
 In all four records, HEAD and local branch refs were unchanged and no merge state appeared. The
 candidate's remote-tracking refs may change because the historical pre-flight performs `git fetch`.
@@ -84,11 +85,29 @@ python -m experiments.spec_kitty_preflight_pilot.reset_fixture `
   --corpus-root C:\temp\invariant-spec-kitty-corpus
 ```
 
-M0 proved that the historical corpus is reproducible. M1 now provides two normalized sides:
+M0 proved that the historical corpus is reproducible. M1 provides two normalized sides:
 
 - `specification`: explicit FR-001 through FR-004 with `spec.md` and WP02 provenance;
 - `git_before` / `git_after`: serialized views of an Invariant-native `GitStateRecord`.
 
-Executable assertion semantics and deterministic PASS/FAIL/INCONCLUSIVE specification gates are
-deliberately reserved for M2. CLI integration remains out of scope until the programmatic path is
-proven.
+The Verification Core milestone connects those sides with a safe typed assertion:
+
+```text
+FR-003
+  -> SET_CONTAINS(
+       scenario.blocking_work_packages,
+       execution.reported_blocking_work_packages
+     )
+```
+
+The mapping is explicitly recorded as `human-approved-wp02-v1`; general specification compilation
+is a later milestone. Output schema v3 contains the plan, per-obligation evidence, overall verdict,
+and a minimal missing-blocker counterexample. CLI integration remains out of scope until the
+programmatic path is proven.
+
+The four historical assertions can also be rerun as an opt-in test:
+
+```powershell
+$env:INVARIANT_SPEC_KITTY_CORPUS = 'C:\temp\invariant-spec-kitty-corpus'
+pytest -m external_corpus tests/experiments/test_spec_kitty_preflight_external.py
+```

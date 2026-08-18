@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -13,6 +14,22 @@ from invariant_cli.capture.model import CaptureContext, CaptureRecord, GitState,
 from invariant_cli.capture.normalizer import ObservationNormalizerRegistry
 from invariant_cli.capture.service import CaptureService
 from invariant_cli.execution.runner import SubprocessExecutionRunner
+from invariant_cli.specifications.model import Specification
+from invariant_cli.verification import (
+    AssertionKind,
+    EvidenceFact,
+    SetAssertion,
+    SpecificationGate,
+    VerificationCandidate,
+    VerificationContext,
+    VerificationEngine,
+    VerificationObligation,
+    VerificationPlan,
+    VerificationScenario,
+    VerificationSource,
+    VerificationSourceKind,
+    VerificationSubject,
+)
 
 PILOT_ROOT = Path(__file__).parent
 DEFAULT_MANIFEST_PATH = PILOT_ROOT / "manifest.json"
@@ -200,8 +217,29 @@ def run_scenario(
         context=CaptureContext(working_directory=working_directory),
     )
     git_record = _single_git_record(capture.records)
+    plan = _verification_plan(manifest, candidate, scenario, specification)
+    blockers = tuple(sorted({*scenario.dirty_work_packages, *scenario.missing_work_packages}))
+    reported = _reported_blockers(capture.execution.stdout, scenario)
+    report = VerificationEngine([SpecificationGate()]).verify(
+        VerificationContext(
+            plan=plan,
+            candidate=VerificationCandidate(label=label, ref=candidate.sha),
+            facts=(
+                EvidenceFact(
+                    id="scenario.blocking_work_packages",
+                    value=blockers,
+                    producer="spec-kitty-pilot-scenario-v1",
+                ),
+                EvidenceFact(
+                    id="execution.reported_blocking_work_packages",
+                    value=reported,
+                    producer="spec-kitty-pilot-output-v1",
+                ),
+            ),
+        )
+    )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "scenario": scenario.id,
         "requirements": list(scenario.requirements),
         "specification": asdict(specification),
@@ -214,7 +252,73 @@ def run_scenario(
         },
         "git_before": _git_state_dict(git_record.before),
         "git_after": _git_state_dict(git_record.after),
+        "verification_plan": asdict(plan),
+        "verification": asdict(report),
     }
+
+
+def _verification_plan(
+    manifest: PilotManifest,
+    candidate: Candidate,
+    scenario: Scenario,
+    specification: Specification,
+) -> VerificationPlan:
+    requirement = specification.requirement("FR-003")
+    return VerificationPlan(
+        id=f"spec-kitty:{manifest.feature}:{manifest.work_package}:{scenario.id}",
+        subject=VerificationSubject(
+            repository=manifest.repository,
+            candidate_ref=candidate.sha,
+            change_ref=manifest.work_package,
+        ),
+        sources=(
+            VerificationSource(
+                id=requirement.id,
+                kind=VerificationSourceKind.SPECIFICATION,
+                artifact=requirement.sources[0].artifact,
+            ),
+        ),
+        obligations=(
+            VerificationObligation(
+                id="O-FR003-aggregate-blockers",
+                source_id=requirement.id,
+                scenario_id=scenario.id,
+                assertion=SetAssertion(
+                    id="A-FR003-blocker-coverage",
+                    expected_fact="scenario.blocking_work_packages",
+                    observed_fact="execution.reported_blocking_work_packages",
+                    kind=AssertionKind.SET_CONTAINS,
+                ),
+            ),
+        ),
+        scenarios=(VerificationScenario(id=scenario.id),),
+        evidence_requirements=(
+            "scenario.blocking_work_packages",
+            "execution.reported_blocking_work_packages",
+        ),
+        assumptions={
+            "semantic_compilation": "human-approved-wp02-v1",
+            "fr_003_relation": "every scenario blocker must be reported",
+        },
+    )
+
+
+def _reported_blockers(stdout: str, scenario: Scenario) -> tuple[str, ...]:
+    reported: set[str] = set()
+    for marker in ("Uncommitted changes in", "Missing worktree for"):
+        start = 0
+        while True:
+            position = stdout.find(marker, start)
+            if position < 0:
+                break
+            segment = stdout[position + len(marker) : position + len(marker) + 500]
+            match = re.search(r"WP\d{2}", segment)
+            if match is not None:
+                reported.add(match.group(0))
+            start = position + len(marker)
+    if "Working directory has uncommitted changes." in stdout:
+        reported.add(scenario.current_work_package)
+    return tuple(sorted(reported))
 
 
 def _single_git_record(records: list[CaptureRecord]) -> GitStateRecord:

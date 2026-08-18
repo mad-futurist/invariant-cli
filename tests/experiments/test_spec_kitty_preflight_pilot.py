@@ -27,7 +27,7 @@ def test_multiple_dirty_fixture_is_normalized_and_repeatable(tmp_path: Path) -> 
     records = [run_scenario(corpus, manifest, "bad", scenario, command) for _ in range(3)]
 
     assert stable_json(records[0]) == stable_json(records[1]) == stable_json(records[2])
-    assert records[0]["schema_version"] == 2
+    assert records[0]["schema_version"] == 3
     specification = records[0]["specification"]
     assert isinstance(specification, dict)
     requirements = specification["requirements"]
@@ -54,6 +54,14 @@ def test_multiple_dirty_fixture_is_normalized_and_repeatable(tmp_path: Path) -> 
     assert statuses["WP05"] == []
     assert statuses["WP06"] == []
     assert records[0]["git_before"] == records[0]["git_after"]
+    verification = records[0]["verification"]
+    assert isinstance(verification, dict)
+    assert verification["verdict"] == "FAIL"
+    assert verification["results"][0]["evidence"][0]["missing"] == ["WP01", "WP03"]
+    plan = records[0]["verification_plan"]
+    assert isinstance(plan, dict)
+    assert plan["obligations"][0]["source_id"] == "FR-003"
+    assert plan["assumptions"]["semantic_compilation"] == "human-approved-wp02-v1"
     assert candidate.name == "spec-kitty-bad"
     assert Path(_git(candidate, "remote", "get-url", "origin")).resolve() == candidate.resolve()
     assert _git(candidate, "rev-parse", "main") == sha
@@ -80,6 +88,10 @@ def test_missing_worktree_is_recorded_and_reset_restores_it(tmp_path: Path) -> N
     assert isinstance(statuses, dict)
     assert statuses["WP03"] is None
     assert record["execution"] == {"exit_code": 7, "stdout": "", "stderr": ""}
+    verification = record["verification"]
+    assert isinstance(verification, dict)
+    assert verification["verdict"] == "FAIL"
+    assert verification["results"][0]["evidence"][0]["missing"] == ["WP03"]
     reset_candidate(candidate, manifest, "bad")
     restored = candidate / ".worktrees" / f"{manifest.feature}-WP03"
     assert restored.is_dir()
