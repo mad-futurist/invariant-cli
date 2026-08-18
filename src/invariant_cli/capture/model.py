@@ -19,7 +19,31 @@ class FileChangeRecord:
     after_content: bytes | None
 
 
-CaptureRecord = FileChangeRecord
+@dataclass(frozen=True)
+class GitWorktreeState:
+    path: str
+    head: str
+    branch: str | None
+    status: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GitState:
+    head: str
+    current_branch: str
+    local_branches: dict[str, str]
+    worktrees: tuple[GitWorktreeState, ...]
+    expected_worktree_status: dict[str, tuple[str, ...] | None]
+    merge_in_progress: bool
+
+
+@dataclass(frozen=True)
+class GitStateRecord:
+    before: GitState
+    after: GitState
+
+
+CaptureRecord = FileChangeRecord | GitStateRecord
 
 
 @dataclass(frozen=True)

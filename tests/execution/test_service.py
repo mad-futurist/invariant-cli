@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+from invariant_cli.execution.runner import SubprocessExecutionRunner
 from invariant_cli.execution.service import capture_process
 
 
@@ -21,3 +22,22 @@ def test_capture_process(tmp_path: Path) -> None:
     assert execution.filesystem_diff.created == []
     assert execution.filesystem_diff.deleted == []
     assert execution.filesystem_diff.modified == []
+
+
+def test_subprocess_runner_decodes_utf8_and_applies_environment(tmp_path: Path) -> None:
+    runner = SubprocessExecutionRunner(environment={"INVARIANT_RUNNER_TEST": "✓"})
+
+    execution = runner.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import os, sys; "
+                "sys.stdout.buffer.write(os.environ['INVARIANT_RUNNER_TEST'].encode('utf-8'))"
+            ),
+        ],
+        working_directory=tmp_path,
+    )
+
+    assert execution.exit_code == 0
+    assert execution.stdout == "✓"

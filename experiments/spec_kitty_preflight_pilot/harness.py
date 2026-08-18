@@ -3,14 +3,22 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+from invariant_cli.adapters.spec_kitty import SpecKittyAdapter
+from invariant_cli.capture.git_probe import GitStateProbe, read_git_state
+from invariant_cli.capture.model import CaptureContext, CaptureRecord, GitState, GitStateRecord
+from invariant_cli.capture.normalizer import ObservationNormalizerRegistry
+from invariant_cli.capture.service import CaptureService
+from invariant_cli.execution.runner import SubprocessExecutionRunner
 
 PILOT_ROOT = Path(__file__).parent
 DEFAULT_MANIFEST_PATH = PILOT_ROOT / "manifest.json"
 SCENARIO_ROOT = PILOT_ROOT / "scenarios"
 DIRTY_MARKER = ".invariant-pilot-dirty"
+PILOT_REQUIREMENT_IDS = ("FR-001", "FR-002", "FR-003", "FR-004")
 
 
 @dataclass(frozen=True)
@@ -104,6 +112,7 @@ def setup_candidate(
     _run(["git", "checkout", "--detach", candidate.sha], cwd=candidate_root)
     _assert_candidate_head(candidate_root, candidate)
     _verify_artifacts(candidate_root, manifest)
+    _configure_fixture_remote(candidate_root, candidate)
     _exclude_invariant_artifacts(candidate_root)
     _ensure_worktrees(candidate_root, manifest, candidate)
     if sync:
@@ -167,64 +176,72 @@ def run_scenario(
     candidate_root = (corpus_root / candidate.directory).resolve()
     _assert_candidate_head(candidate_root, candidate)
     working_directory = apply_scenario(candidate_root, manifest, scenario)
-    before = git_snapshot(candidate_root, manifest, working_directory)
-    completed = _run(
-        command,
-        cwd=working_directory,
-        check=False,
-        environment=candidate.environment,
+    specification = SpecKittyAdapter().load(
+        candidate_root,
+        mission=manifest.feature,
+        work_package=manifest.work_package,
+        requirement_ids=PILOT_REQUIREMENT_IDS,
     )
-    after = git_snapshot(candidate_root, manifest, working_directory)
+    expected_worktrees = {
+        wp_id: _worktree_path(candidate_root, manifest.feature, wp_id)
+        for wp_id in manifest.expected_work_packages
+    }
+    capture = CaptureService(
+        runner=SubprocessExecutionRunner(environment=candidate.environment),
+        probes=[
+            GitStateProbe(
+                repository_root=candidate_root,
+                expected_worktrees=expected_worktrees,
+            )
+        ],
+        normalizers=ObservationNormalizerRegistry([]),
+    ).capture(
+        command,
+        context=CaptureContext(working_directory=working_directory),
+    )
+    git_record = _single_git_record(capture.records)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "scenario": scenario.id,
         "requirements": list(scenario.requirements),
+        "specification": asdict(specification),
         "candidate": {"label": label, "ref": candidate.sha},
         "command": command,
         "execution": {
-            "exit_code": completed.returncode,
-            "stdout": _normalize_text(completed.stdout, candidate_root),
-            "stderr": _normalize_text(completed.stderr, candidate_root),
+            "exit_code": capture.execution.exit_code,
+            "stdout": _normalize_text(capture.execution.stdout, candidate_root),
+            "stderr": _normalize_text(capture.execution.stderr, candidate_root),
         },
-        "git_before": before,
-        "git_after": after,
+        "git_before": _git_state_dict(git_record.before),
+        "git_after": _git_state_dict(git_record.after),
     }
 
 
-def git_snapshot(
-    candidate_root: Path,
-    manifest: PilotManifest,
-    working_directory: Path,
-) -> dict[str, object]:
-    refs = {}
-    raw_refs = _git(
-        ["for-each-ref", "--format=%(refname:short) %(objectname)", "refs/heads"],
-        cwd=candidate_root,
-    ).stdout
-    for line in raw_refs.splitlines():
-        name, sha = line.split(" ", maxsplit=1)
-        refs[name] = sha
-    worktrees = _parse_worktrees(candidate_root)
-    statuses: dict[str, list[str] | None] = {}
-    for wp_id in manifest.expected_work_packages:
-        path = _worktree_path(candidate_root, manifest.feature, wp_id)
-        statuses[wp_id] = (
-            _git(["status", "--porcelain"], cwd=path).stdout.splitlines() if path.is_dir() else None
-        )
-    merge_path = Path(
-        _git(["rev-parse", "--git-path", "MERGE_HEAD"], cwd=working_directory).stdout.strip()
-    )
-    if not merge_path.is_absolute():
-        merge_path = working_directory / merge_path
+def _single_git_record(records: list[CaptureRecord]) -> GitStateRecord:
+    git_records = [record for record in records if isinstance(record, GitStateRecord)]
+    if len(git_records) != 1:
+        raise HarnessError(f"Expected one GitStateRecord, found {len(git_records)}.")
+    return git_records[0]
+
+
+def _git_state_dict(state: GitState) -> dict[str, object]:
     return {
-        "head": _git(["rev-parse", "HEAD"], cwd=candidate_root).stdout.strip(),
-        "current_branch": _git(
-            ["rev-parse", "--abbrev-ref", "HEAD"], cwd=working_directory
-        ).stdout.strip(),
-        "local_branches": dict(sorted(refs.items())),
-        "worktrees": worktrees,
-        "worktree_status": statuses,
-        "merge_in_progress": merge_path.exists(),
+        "head": state.head,
+        "current_branch": state.current_branch,
+        "local_branches": state.local_branches,
+        "worktrees": [
+            {
+                "path": worktree.path,
+                "head": worktree.head,
+                "branch": worktree.branch or "(detached)",
+            }
+            for worktree in state.worktrees
+        ],
+        "worktree_status": {
+            identifier: list(status) if status is not None else None
+            for identifier, status in state.expected_worktree_status.items()
+        },
+        "merge_in_progress": state.merge_in_progress,
     }
 
 
@@ -242,7 +259,8 @@ def _ensure_worktrees(
     candidate: Candidate,
 ) -> None:
     _git(["worktree", "prune"], cwd=candidate_root)
-    registered = {item["path"]: item for item in _parse_worktrees(candidate_root)}
+    state = read_git_state(candidate_root, working_directory=candidate_root)
+    registered = {worktree.path: worktree for worktree in state.worktrees}
     for wp_id in manifest.expected_work_packages:
         branch = f"{manifest.feature}-{wp_id}"
         worktree = _worktree_path(candidate_root, manifest.feature, wp_id)
@@ -261,35 +279,13 @@ def _ensure_worktrees(
         normalized = _normalized_path(worktree, candidate_root)
         if normalized in registered:
             worktree_state = registered[normalized]
-            if worktree_state["branch"] != branch or worktree_state["head"] != candidate.sha:
+            if worktree_state.branch != branch or worktree_state.head != candidate.sha:
                 raise HarnessError(f"Unexpected worktree state at {worktree}: {worktree_state}")
         else:
             if worktree.exists():
                 raise HarnessError(f"Unregistered worktree path already exists: {worktree}")
             worktree.parent.mkdir(parents=True, exist_ok=True)
             _git(["worktree", "add", str(worktree), branch], cwd=candidate_root)
-
-
-def _parse_worktrees(candidate_root: Path) -> list[dict[str, str]]:
-    output = _git(["worktree", "list", "--porcelain"], cwd=candidate_root).stdout
-    items: list[dict[str, str]] = []
-    current: dict[str, str] = {}
-    for line in [*output.splitlines(), ""]:
-        if not line:
-            if current:
-                path = Path(current["worktree"])
-                items.append(
-                    {
-                        "path": _normalized_path(path, candidate_root),
-                        "head": current.get("HEAD", ""),
-                        "branch": current.get("branch", "(detached)").removeprefix("refs/heads/"),
-                    }
-                )
-                current = {}
-            continue
-        key, _, value = line.partition(" ")
-        current[key] = value
-    return sorted(items, key=lambda item: item["path"])
 
 
 def _normalized_path(path: Path, candidate_root: Path) -> str:
@@ -341,6 +337,40 @@ def _verify_artifacts(candidate_root: Path, manifest: PilotManifest) -> None:
             raise HarnessError(
                 f"Pinned artifact mismatch for {path} at {ref}: {actual} != {expected}"
             )
+
+
+def _configure_fixture_remote(candidate_root: Path, candidate: Candidate) -> None:
+    """Keep historical pre-flight fetches independent from the moving upstream main."""
+    controlled_url = candidate_root.as_posix()
+    remotes = set(_git(["remote"], cwd=candidate_root).stdout.splitlines())
+    origin_url = (
+        _git(["remote", "get-url", "origin"], cwd=candidate_root, check=False).stdout.strip()
+        if "origin" in remotes
+        else ""
+    )
+    if origin_url and not _same_local_path(origin_url, candidate_root):
+        if "upstream" in remotes:
+            _git(["remote", "set-url", "upstream", origin_url], cwd=candidate_root)
+            _git(["remote", "remove", "origin"], cwd=candidate_root)
+        else:
+            _git(["remote", "rename", "origin", "upstream"], cwd=candidate_root)
+        remotes.discard("origin")
+        remotes.add("upstream")
+    if "origin" in remotes:
+        _git(["remote", "set-url", "origin", controlled_url], cwd=candidate_root)
+    else:
+        _git(["remote", "add", "origin", controlled_url], cwd=candidate_root)
+    _git(["branch", "--force", "main", candidate.sha], cwd=candidate_root)
+    _git(["update-ref", "refs/remotes/origin/main", candidate.sha], cwd=candidate_root)
+
+
+def _same_local_path(value: str, expected: Path) -> bool:
+    if "://" in value:
+        return False
+    try:
+        return Path(value).resolve() == expected.resolve()
+    except OSError:
+        return False
 
 
 def _candidate(manifest: PilotManifest, label: str) -> Candidate:

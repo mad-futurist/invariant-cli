@@ -27,6 +27,17 @@ def test_multiple_dirty_fixture_is_normalized_and_repeatable(tmp_path: Path) -> 
     records = [run_scenario(corpus, manifest, "bad", scenario, command) for _ in range(3)]
 
     assert stable_json(records[0]) == stable_json(records[1]) == stable_json(records[2])
+    assert records[0]["schema_version"] == 2
+    specification = records[0]["specification"]
+    assert isinstance(specification, dict)
+    requirements = specification["requirements"]
+    assert isinstance(requirements, tuple)
+    assert [requirement["id"] for requirement in requirements] == [
+        "FR-001",
+        "FR-002",
+        "FR-003",
+        "FR-004",
+    ]
     assert records[0]["execution"] == {
         "exit_code": 0,
         "stdout": "controlled preflight\n",
@@ -44,6 +55,9 @@ def test_multiple_dirty_fixture_is_normalized_and_repeatable(tmp_path: Path) -> 
     assert statuses["WP06"] == []
     assert records[0]["git_before"] == records[0]["git_after"]
     assert candidate.name == "spec-kitty-bad"
+    assert Path(_git(candidate, "remote", "get-url", "origin")).resolve() == candidate.resolve()
+    assert _git(candidate, "rev-parse", "main") == sha
+    assert _git(candidate, "rev-parse", "origin/main") == sha
 
 
 def test_missing_worktree_is_recorded_and_reset_restores_it(tmp_path: Path) -> None:
@@ -92,9 +106,35 @@ def _source_repository(tmp_path: Path) -> tuple[Path, str]:
     _run(["git", "config", "user.name", "Invariant Pilot"], source)
     mission = source / "kitty-specs" / "017-preflight" / "tasks"
     mission.mkdir(parents=True)
-    (mission.parent / "spec.md").write_text("# Pilot spec\n", encoding="utf-8")
+    (mission.parent / "spec.md").write_text(
+        """# Pilot spec
+
+## Requirements
+
+### Functional Requirements
+
+**Pre-flight Validation**
+- **FR-001**: Check all worktrees
+- **FR-002**: Check target divergence
+- **FR-003**: Aggregate all blockers
+- **FR-004**: Fail without branch mutation
+""",
+        encoding="utf-8",
+    )
     for wp_id in ("WP01", "WP02", "WP03", "WP04", "WP05", "WP06"):
-        (mission / f"{wp_id}.md").write_text(f"# {wp_id}\n", encoding="utf-8")
+        body = f"""---
+work_package_id: "{wp_id}"
+---
+
+# Work Package Prompt: {wp_id}
+"""
+        if wp_id == "WP02":
+            body += """
+## Objectives & Success Criteria
+
+**Functional Requirements Addressed**: FR-001, FR-002, FR-003, FR-004
+"""
+        (mission / f"{wp_id}.md").write_text(body, encoding="utf-8")
     _run(["git", "add", "."], source)
     _run(["git", "commit", "-m", "fixture"], source)
     return source, _git(source, "rev-parse", "HEAD")

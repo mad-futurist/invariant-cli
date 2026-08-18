@@ -1,8 +1,10 @@
-# Spec Kitty pre-flight corpus pilot (M0)
+# Spec Kitty pre-flight verification pilot (M1)
 
 This experiment reproduces the two review defects from Spec Kitty Feature 017 / WP02 without
 modifying the Spec Kitty product repository. Invariant owns the harness; two external, detached
-candidate checkouts provide the historical corpus.
+candidate checkouts provide the historical corpus. M1 compiles the pinned Markdown requirements
+into typed Invariant specification IR and captures execution through `CaptureService` plus the
+generic `GitStateProbe`.
 
 The pinned candidates are:
 
@@ -17,6 +19,11 @@ tracking refs changed by `git fetch` are outside this pilot's mutation scope.
 Both candidates set `SPEC_KITTY_CLI_VERSION=0.11.0` only for the observed command. The historical
 checkout declares CLI package version 0.11.1 while its checked-in project metadata is 0.11.0;
 without Spec Kitty's supported version override, execution stops before reaching pre-flight.
+
+Setup preserves the network repository as `upstream`, then points `origin` at the local candidate
+and pins both `main` and `origin/main` to its SHA. The historical implementation can still execute
+`git fetch origin main`, but a moving GitHub default branch cannot inject an unrelated divergence
+failure into the controlled scenarios.
 
 ## Create the corpus
 
@@ -77,6 +84,11 @@ python -m experiments.spec_kitty_preflight_pilot.reset_fixture `
   --corpus-root C:\temp\invariant-spec-kitty-corpus
 ```
 
-M0 proves that the historical corpus is reproducible. Translating FR-001 through FR-004 into
-typed obligations, capturing the records through Invariant, and producing deterministic
-PASS/FAIL/INCONCLUSIVE gate results are deliberately reserved for M1-M3.
+M0 proved that the historical corpus is reproducible. M1 now provides two normalized sides:
+
+- `specification`: explicit FR-001 through FR-004 with `spec.md` and WP02 provenance;
+- `git_before` / `git_after`: serialized views of an Invariant-native `GitStateRecord`.
+
+Executable assertion semantics and deterministic PASS/FAIL/INCONCLUSIVE specification gates are
+deliberately reserved for M2. CLI integration remains out of scope until the programmatic path is
+proven.

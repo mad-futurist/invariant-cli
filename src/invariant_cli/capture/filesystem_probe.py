@@ -1,7 +1,12 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from invariant_cli.capture.model import CaptureContext, FileChangeRecord, ProbeResult
+from invariant_cli.capture.model import (
+    CaptureContext,
+    CaptureRecord,
+    FileChangeRecord,
+    ProbeResult,
+)
 from invariant_cli.capture.probe import ProbeSession
 from invariant_cli.execution.model import Execution
 from invariant_cli.observation.filesystem import FileState, diff_snapshots, snapshot_directory
@@ -58,7 +63,7 @@ class _FileSystemProbeSession:
             | set(filesystem_diff.modified)
         )
 
-        records: list[FileChangeRecord] = []
+        records: list[CaptureRecord] = []
         for path in changed_paths:
             if not self._capture_content(path):
                 continue
